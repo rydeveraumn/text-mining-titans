@@ -100,6 +100,9 @@ class SquadDataset(Dataset):
             self.tokenizer, self.answers_text[idx]
         )
 
+        # Answers start for model training / used as labels
+        # There were a lot of start values missing - we will need to figure out what
+        # we want to do with that data
         answers_start = torch.tensor(self.answers_start[idx], dtype=torch.long)
 
         # Gather outputs
