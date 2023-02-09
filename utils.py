@@ -38,31 +38,32 @@ def trainer(data_loader, model, optimizer, epochs):
     # Put model in training mode
     model.train()
 
-    for data in data_loader:
-        # Zero out the gradients from the optimizer
-        optimizer.zero_grad()
+    for epoch in range(epochs):
+        for data in data_loader:
+            # Zero out the gradients from the optimizer
+            optimizer.zero_grad()
 
-        # Get all of the outputs
-        input_ids = data["input_ids"]
-        attention_mask = data["attention_mask"]
-        start_positions = data["start_positions"]
-        end_positions = data["end_positions"]
+            # Get all of the outputs
+            input_ids = data["input_ids"]
+            attention_mask = data["attention_mask"]
+            start_positions = data["start_positions"]
+            end_positions = data["end_positions"]
 
-        # Get the outputs of the model - remember that
-        # at least with the QA models the first output of the
-        # model will be the loss
-        outputs = model(
-            input_ids,
-            attention_mask=attention_mask,
-            start_positions=start_positions,
-            end_positions=end_positions,
-        )
+            # Get the outputs of the model - remember that
+            # at least with the QA models the first output of the
+            # model will be the loss
+            outputs = model(
+                input_ids,
+                attention_mask=attention_mask,
+                start_positions=start_positions,
+                end_positions=end_positions,
+            )
 
-        # Gather the loss
-        loss = outputs.loss
+            # Gather the loss
+            loss = outputs.loss
 
-        # Calculate the gradients in the backward pass
-        loss.backward()
+            # Calculate the gradients in the backward pass
+            loss.backward()
 
-        # update the gradients with the optimizer
-        optimizer.step()
+            # update the gradients with the optimizer
+            optimizer.step()
