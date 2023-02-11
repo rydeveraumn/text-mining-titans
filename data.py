@@ -1,69 +1,55 @@
 # third party
-import pandas as pd
+from functools import partial
+
 import torch
 from datasets import load_dataset
 from torch.utils.data import Dataset
 
-
-def extract_answer_start(x):  # noqa
-    """
-    Function that extracts the answer start key from the squad
-    v2 dataset
-    """
-    answer_start = x.get("answer_start")
-
-    # If the length is zero then return np.nan
-    if len(answer_start) == 0:
-        return -1
-
-    return answer_start[0]
+# first party
+from utils import prepare_train_features, prepare_validation_features
 
 
-def load_squad_data():  # noqa
+def load_squad_data(tokenizer):  # noqa
     """
     Function to load the squad v2 dataset from huggingface 🤗
     """
     dataset = load_dataset("squad_v2")
 
-    # Create the training dataset
-    training_data = pd.DataFrame(dataset["train"])
-    training_data["answers_text"] = training_data["answers"].apply(
-        lambda x: "".join(x.get("text"))
-    )
-    training_data["answers_start"] = training_data["answers"].apply(
-        extract_answer_start
+    # Inputs
+    max_length = 384
+    doc_stride = 128
+
+    # Set up partial functions - training features
+    training_features = partial(
+        prepare_train_features,
+        tokenizer=tokenizer,
+        max_length=max_length,
+        doc_stride=doc_stride,
     )
 
-    # Create the validation dataset
-    validation_data = pd.DataFrame(dataset["validation"])
-    validation_data["answers_text"] = validation_data["answers"].apply(
-        lambda x: "".join(x.get("text"))
+    # Set up partial function - validation features
+    validation_features = partial(
+        prepare_validation_features,
+        tokenizer=tokenizer,
+        max_length=max_length,
+        doc_stride=doc_stride,
     )
-    validation_data["answers_start"] = validation_data["answers"].apply(
-        extract_answer_start
+
+    # Create the training dataset
+    training_data = dataset["train"].map(
+        training_features,
+        batched=True,
+        remove_columns=dataset["train"].column_names,
+    )
+
+    # Create the validation training st
+    validation_data = dataset["validation"].map(
+        validation_features,
+        batched=True,
+        remove_columns=dataset["train"].column_names,
     )
 
     return training_data, validation_data
-
-
-def prepare_inputs(tokenizer, text):
-    """
-    Function that will prepare the input ids and attention masks
-    for the task
-    """
-    data = tokenizer(
-        text,
-        max_length=256,
-        truncation=True,
-        add_special_tokens=True,
-        pad_to_max_length=True,
-    )
-
-    # Input ids
-    input_ids = torch.tensor(data["input_ids"], dtype=torch.long)
-    attention_masks = torch.tensor(data["attention_mask"], dtype=torch.long)
-
-    return input_ids, attention_masks
 
 
 class SquadDataset(Dataset):
@@ -72,48 +58,48 @@ class SquadDataset(Dataset):
     from the Squad V2 dataset
     """
 
-    def __init__(self, df, tokenizer):  # noqa
-        self.df = df
-        self.context = df["context"].values
-        self.questions = df["question"].values
-        self.answers_text = df["answers_text"].values
-        self.answers_start = df["answers_start"].values
-        self.tokenizer = tokenizer
+    def __init__(self, data, mode="training"):  # noqa
+        self.data = data
+        self.input_ids = data["input_ids"]
+        self.attention_mask = data["attention_mask"]
+        self.mode = mode
+
+        # If mode is training then we need to extract
+        # the start and stop positions
+        if self.mode == "training":
+            available_features = data.features.keys()
+            if "start_positions" not in available_features:
+                raise ValueError(
+                    "Training data does not have the correct format!"
+                )  # noqa
+
+            self.start_positions = data["start_positions"]
+            self.end_positions = data["end_positions"]
 
     def __len__(self):  # noqa
-        return len(self.df)
+        return len(self.data)
 
     def __getitem__(self, idx):  # noqa
         # We need to get the outputs for all of the texts
         # Contexts
-        context_inputs, context_attention_masks = prepare_inputs(
-            self.tokenizer, self.context[idx]
-        )
-
-        # Questions
-        question_inputs, question_attention_masks = prepare_inputs(
-            self.tokenizer, self.questions[idx]
-        )
-
-        # Answers / labels
-        answers_inputs, answers_attention_masks = prepare_inputs(
-            self.tokenizer, self.answers_text[idx]
-        )
-
-        # Answers start for model training / used as labels
-        # There were a lot of start values missing - we will need to figure out what
-        # we want to do with that data
-        answers_start = torch.tensor(self.answers_start[idx], dtype=torch.long)
+        # Set up input ids to be torch tensors
+        input_ids = torch.tensor(self.input_ids[idx], dtype=torch.long)
+        attention_mask = torch.tensor(
+            self.attention_mask[idx], dtype=torch.long
+        )  # noqa
 
         # Gather outputs
-        outputs = {
-            "context_inputs": context_inputs,
-            "context_attention_masks": context_attention_masks,
-            "question_inputs": question_inputs,
-            "question_attention_masks": question_attention_masks,
-            "answers_inputs": answers_inputs,
-            "answers_attention_masks": answers_attention_masks,
-            "answers_start": answers_start,
-        }
+        outputs = {"input_ids": input_ids, "attention_mask": attention_mask}
+
+        if self.mode == "training":
+            start_positions = torch.tensor(
+                self.start_positions[idx], dtype=torch.long
+            )  # noqa
+            end_positions = torch.tensor(
+                self.end_positions[idx], dtype=torch.long
+            )  # noqa
+
+            outputs["start_positions"] = start_positions
+            outputs["end_positions"] = end_positions
 
         return outputs
