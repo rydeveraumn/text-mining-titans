@@ -227,8 +227,8 @@ def question_and_answer_evaluation(
 
             # Get the predictions
             predictions = model(input_ids, attention_mask=attention_mask)
-            start_logits = predictions.start_logits().detach().cpu().numpy()
-            end_logits = predictions.end_logits().detach().cpu().numpy()
+            start_logits = predictions.start_logits.detach().cpu().numpy()
+            end_logits = predictions.end_logits.detach().cpu().numpy()
 
             # append to list to get the full prediction set
             start_logits_list.append(start_logits)
