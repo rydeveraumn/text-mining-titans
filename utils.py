@@ -1,9 +1,6 @@
 # third party
 import tqdm
 
-max_length = 384
-doc_stride = 128
-
 
 def prepare_train_features(examples, tokenizer, max_length, doc_stride):
     """
