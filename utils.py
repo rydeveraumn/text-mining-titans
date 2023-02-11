@@ -298,19 +298,25 @@ def question_and_answer_evaluation(
                         }
                     )
 
-            # Get the best answer for evaluating the metric
-            best_answer = max(answers, key=lambda x: x["logit_score"])
-            predicted_answers.append(
-                {"id": example_id, "prediction_text": best_answer["text"]}
-            )
+        # Get the best answer for evaluating the metric
+        best_answer = max(answers, key=lambda x: x["logit_score"])
+        predicted_answers.append(
+            {
+                "id": example_id,
+                "prediction_text": best_answer["text"],
+                "no_answer_probability": 0.0,
+            }
+        )
 
     # Setup the metric
     metric = evaluate.load("squad_v2")
 
     # Set up the answers
     theoretical_answers = [
-        {"id": ex["id"], "answers": ex["answers"]} for ex in raw_validation_data
+        {"id": ex["id"], "answers": ex["answers"]} for ex in raw_validation_data  # noqa
     ]
 
     # Return the metric
-    return metric.compute(predictions=predicted_answers, references=theoretical_answers)
+    return metric.compute(
+        predictions=predicted_answers, references=theoretical_answers
+    )  # noqa
