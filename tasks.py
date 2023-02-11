@@ -6,7 +6,7 @@ from transformers import AutoTokenizer, RobertaForQuestionAnswering
 
 # first party
 from data import SquadDataset, load_squad_data
-from utils import trainer, question_and_answer_evaluation
+from utils import train_single_epoch, question_and_answer_evaluation
 
 # TODO: set up logger
 
@@ -60,8 +60,8 @@ def train_model():
     # We will certainly need to run this on a GPU we
     # can use MSI
     # TODO: Save losses
-    for epoch in epochs:
-        losses = trainer(
+    for epoch in range(epochs):
+        losses = train_single_epoch(
             model=model,
             data_loader=train_loader,
             optimizer=optimizer,
