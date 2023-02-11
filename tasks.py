@@ -1,4 +1,5 @@
 # third party
+import torch
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from transformers import AutoTokenizer, RobertaForQuestionAnswering
@@ -18,9 +19,17 @@ def train_model():
     model_name = "roberta-base"
     batch_size = 16
 
+    # Set up the device
+    device = (
+        torch.device("cuda")
+        if torch.cuda.is_available()
+        else torch.device("cpu")  # noqa
+    )  # noqa
+
     # Setup the model and tokenizer
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     model = RobertaForQuestionAnswering.from_pretrained(model_name)
+    model = model.to(device)
 
     # Load the training and the validation data
     training_data, validation_data = load_squad_dataset(tokenizer)
@@ -53,4 +62,5 @@ def train_model():
         data_loader=train_loader,
         optimizer=optimizer,
         epochs=epochs,  # noqa
+        device=device,
     )

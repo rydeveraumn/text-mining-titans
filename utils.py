@@ -1,3 +1,6 @@
+# third party
+import tqdm
+
 max_length = 384
 doc_stride = 128
 
@@ -148,7 +151,7 @@ def prepare_validation_features(examples, tokenizer, max_length, doc_stride):
     return tokenized_examples
 
 
-def trainer(data_loader, model, optimizer, epochs):
+def trainer(data_loader, model, optimizer, epochs, device):
     """
     Function that runs a pytorch based training. For the model training
     with question and answering we will need the input_ids,
@@ -156,20 +159,24 @@ def trainer(data_loader, model, optimizer, epochs):
     """
     # TODO: Set up loss meter
     # TODO: Get working with GPU
+    step_losses = []
 
     # Put model in training mode
     model.train()
 
-    for epoch in range(epochs):
-        for data in data_loader:
+    # Description of training
+    tqdm_loop = tqdm.tqdm(data_loader, leave=True)
+
+    for epoch in tqdm.tqdm(range(epochs)):
+        for data in tqdm_loop:
             # Zero out the gradients from the optimizer
             optimizer.zero_grad()
 
             # Get all of the outputs
-            input_ids = data["input_ids"]
-            attention_mask = data["attention_mask"]
-            start_positions = data["start_positions"]
-            end_positions = data["end_positions"]
+            input_ids = data["input_ids"].to(device)
+            attention_mask = data["attention_mask"].to(device)
+            start_positions = data["start_positions"].to(device)
+            end_positions = data["end_positions"].to(device)
 
             # Get the outputs of the model - remember that
             # at least with the QA models the first output of the
@@ -183,9 +190,15 @@ def trainer(data_loader, model, optimizer, epochs):
 
             # Gather the loss
             loss = outputs.loss
+            step_losses.append(loss)
 
             # Calculate the gradients in the backward pass
             loss.backward()
 
             # update the gradients with the optimizer
             optimizer.step()
+
+            tqdm_loop.set_description(f"Epoch = {epoch}")
+            tqdm_loop.set_postfix(loss=loss.item())
+
+    return step_losses
