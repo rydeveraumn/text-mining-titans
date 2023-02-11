@@ -14,6 +14,7 @@ def load_squad_data(tokenizer):  # noqa
     Function to load the squad v2 dataset from huggingface 🤗
     """
     dataset = load_dataset("squad_v2")
+    raw_validation_data = dataset["validation"].select(range(100))
 
     # Inputs
     max_length = 384
@@ -36,20 +37,31 @@ def load_squad_data(tokenizer):  # noqa
     )
 
     # Create the training dataset
-    training_data = dataset["train"].map(
-        training_features,
-        batched=True,
-        remove_columns=dataset["train"].column_names,
+    training_data = (
+        dataset["train"]
+        .select(range(100))
+        .map(
+            training_features,
+            batched=True,
+            remove_columns=dataset["train"].column_names,
+        )
     )
 
     # Create the validation training st
-    validation_data = dataset["validation"].map(
+    validation_data = raw_validation_data.map(
         validation_features,
         batched=True,
-        remove_columns=dataset["train"].column_names,
+        remove_columns=dataset["validation"].column_names,
     )
 
-    return training_data, validation_data
+    # Combine the validation data for training
+    # and evaluation
+    validation_datasets = {
+        "raw_validation_data": raw_validation_data,
+        "validation_data": validation_data,
+    }
+
+    return training_data, validation_datasets
 
 
 class SquadDataset(Dataset):

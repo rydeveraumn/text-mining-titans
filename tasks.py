@@ -5,8 +5,8 @@ from torch.utils.data import DataLoader
 from transformers import AutoTokenizer, RobertaForQuestionAnswering
 
 # first party
-from data import SquadDataset, load_squad_dataset
-from utils import trainer
+from data import SquadDataset, load_squad_data
+from utils import trainer, question_and_answer_evaluation
 
 # TODO: set up logger
 
@@ -18,6 +18,7 @@ def train_model():
     # model_name
     model_name = "roberta-base"
     batch_size = 16
+    path = "./model_weights/text-mining-titans-roberta-qa.pt"
 
     # Set up the device
     device = (
@@ -32,7 +33,8 @@ def train_model():
     model = model.to(device)
 
     # Load the training and the validation data
-    training_data, validation_data = load_squad_dataset(tokenizer)
+    training_data, validation_datasets = load_squad_data(tokenizer)
+    validation_data = validation_datasets["validation_data"]
 
     # Setup the training and validation dataset for loading into torch
     train_dataset = SquadDataset(training_data, mode="training")
@@ -57,10 +59,23 @@ def train_model():
     # Run the model training
     # We will certainly need to run this on a GPU we
     # can use MSI
-    losses = trainer(
-        model=model,
-        data_loader=train_loader,
-        optimizer=optimizer,
-        epochs=epochs,  # noqa
-        device=device,
-    )
+    # TODO: Save losses
+    for epoch in epochs:
+        losses = trainer(
+            model=model,
+            data_loader=train_loader,
+            optimizer=optimizer,
+            device=device,
+        )
+
+        # Evaluate the model
+        evaluation_metrics = question_and_answer_evaluation(
+            model=model,
+            data_loader=validation_loader,
+            validation_datasets=validation_datasets,
+            device=device,
+        )
+        print(evaluation_metrics)
+
+    # After training save the model
+    torch.save(model.state_dict(), path)
