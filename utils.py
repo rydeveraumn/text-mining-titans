@@ -40,7 +40,34 @@ class CustomTrainer(Trainer):
             with tqdm(train_loader, unit="batch") as training_epoch:
                 training_epoch.set_description(f"Training epoch {epoch}")
                 for step, data in enumerate(training_epoch):
-                    pass
+                    # Zero out the optimizer
+                    self.optimizer.zero_grad()
+
+                    # Set up the inputs
+                    input_ids = data["input_ids"]
+                    attention_mask = data["attention_mask"]
+                    start_positions = data["start_positions"]
+                    end_positions = data["end_positions"]
+
+                    # Get the outputs of the model
+                    outputs = model(
+                        input_ids,
+                        attention_mask=attention_mask,
+                        start_positions=start_positions,
+                        end_positions=end_positions,
+                    )
+
+                    # Get the loss
+                    loss = outputs.loss
+
+                    # Make the backward pass and compute the gradients
+                    loss.backward()
+
+                    # Apply gradients
+                    optimizer.set()
+
+                    # Set loss description
+                    training_epoch.set_postfix(loss=loss.item())
 
 
 def prepare_train_features(examples, tokenizer, max_length, doc_stride):
