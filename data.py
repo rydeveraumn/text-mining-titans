@@ -4,6 +4,8 @@ from functools import partial
 import torch
 from datasets import load_dataset
 from torch.utils.data import Dataset
+from transformers import squad_convert_examples_to_features
+from transformers.data.processors.squad import SquadV2Processor
 
 # first party
 from utils import prepare_train_features, prepare_validation_features
@@ -62,6 +64,32 @@ def load_squad_data(tokenizer):  # noqa
     }
 
     return training_data, validation_datasets
+
+
+def load_examples(
+    data_dir, data_file, tokenizer, evaluate=False, output_examples=False
+):
+    processor = SquadV2Processor()
+    if evaluate:
+        examples = processor.get_dev_examples(data_dir, filename=data_file)
+    else:
+        examples = processor.get_train_examples(data_dir, filename=data_file)
+
+    features, dataset = squad_convert_examples_to_features(
+        examples=examples,
+        tokenizer=tokenizer,
+        max_seq_length=384,
+        doc_stride=128,
+        max_query_length=64,
+        is_training=not evaluate,
+        return_dataset="pt",
+        threads=1,
+    )
+
+    if output_examples:
+        return dataset, examples, features
+
+    return dataset
 
 
 class SquadDataset(Dataset):
