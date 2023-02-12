@@ -1,11 +1,46 @@
 # stdlib
 import collections
+import math
 
 # third party
 import evaluate
 import numpy as np
 import torch
+import torch.optim as optim
 import tqdm
+
+
+class CustomTrainer(Trainer):
+    def _inner_training_loop(
+        self,
+        batch_size=None,
+        args=None,
+        resume_from_checkpoint=None,
+        trial=None,
+        ignore_keys_for_eval=None,
+    ):
+        # The first thing we will do just like the training inner loop is get the
+        # training dataloader
+        train_loader = self.get_train_dataloader()
+
+        # Get number of epochs and max steps
+        number_of_epochs = args.num_train_epochs
+        max_steps = math.ceil(args.num_train_epochs * len(train_loader))
+
+        # In our case we will set our own optimizer internally
+        self.optimizer = optim.Adam(model.parameters(), lr=args.learning_rate)
+
+        # Implement a learning rate scheduler
+        self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, 1, gamma=0.9)
+
+        # Train the model over epochs
+        for epoch in range(number_of_epochs):
+            train_loss_per_epoch = 0
+            train_acc_per_epoch = 0
+            with tqdm(train_loader, unit="batch") as training_epoch:
+                training_epoch.set_description(f"Training epoch {epoch}")
+                for step, data in enumerate(training_epoch):
+                    pass
 
 
 def prepare_train_features(examples, tokenizer, max_length, doc_stride):
@@ -233,6 +268,10 @@ def question_and_answer_evaluation(
             # append to list to get the full prediction set
             start_logits_list.append(start_logits)
             end_logits_list.append(end_logits)
+
+            import pdb
+
+            pdb.set_trace()
 
     # Concatenate the predictions
     start_logits = np.concatenate(start_logits_list)
