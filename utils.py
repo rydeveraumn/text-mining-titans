@@ -12,7 +12,9 @@ import tqdm
 from torch.utils.data import DataLoader, SequentialSampler
 from transformers import Trainer
 from transformers.data.metrics.squad_metrics import (
+    compute_exact,
     compute_predictions_logits,
+    normalize_answer,
     squad_evaluate,
 )
 from transformers.data.processors.squad import SquadResult
@@ -398,3 +400,56 @@ def evaluate(output_dir, model, tokenizer, device, datasets, prefix=""):
     # Compute the F1 and exact scores.
     results = squad_evaluate(examples, predictions)
     return results, examples, predictions
+
+
+def build_incorrect_samples(examples, predictions):
+    """
+    Function that will define incorrect samples
+    based on the exact match criteria
+    """
+    results = []
+
+    for example in examples:
+        qas_id = example.qas_id
+        gold_answers = [
+            answer["text"]
+            for answer in example.answers
+            if normalize_answer(answer["text"])
+        ]
+
+        if not gold_answers:
+            gold_answers = [""]
+
+        if qas_id not in predictions:
+            continue
+
+        prediction = predictions[qas_id]
+        exact_scores = [
+            (
+                compute_exact(a, prediction),
+                a,
+                prediction,
+                example.context_text,
+                example.question_text,
+                qas_id,
+            )
+            for a in gold_answers
+        ]
+        exact_scores = sorted(exact_scores, key=lambda x: x[0], reverse=True)[0]
+        results.append(exact_scores)
+
+        df = pd.DataFrame(
+            results,
+            columns=[
+                "exact_score",
+                "answer",
+                "prediction",
+                "context",
+                "question",
+                "id",
+            ],
+        )
+        df = df.loc[df["exact_score"] == 0].sample(frac=1.0).reset_index(drop=True)
+
+        logging.info("Saving incorrect results!")
+        df.head(10).to_csv("./results/incorrect-samples-v2.csv", index=False)
