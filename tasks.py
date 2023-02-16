@@ -13,7 +13,7 @@ from transformers import (
 
 # first party
 from data import SquadDataset, load_examples
-from utils import CustomTrainer, evaluate
+from utils import CustomTrainer, build_incorrect_samples, evaluate
 
 # Create logger
 logger = logging.getLogger(__name__)
@@ -130,3 +130,6 @@ def train_model(create_training_data=False):
     # Save figure
     fig.tight_layout()
     fig.savefig("./results/training_loss.png")
+
+    # For the final output build the incorrect samples
+    build_incorrect_samples(examples, predictions)
