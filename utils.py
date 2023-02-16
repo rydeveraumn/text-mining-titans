@@ -1,13 +1,22 @@
 # stdlib
-import collections
-import math
+import logging
+import os
+import time
+import timeit
 
 # third party
-import evaluate
-import numpy as np
+import pandas as pd
 import torch
 import torch.optim as optim
 import tqdm
+from torch.utils.data import DataLoader, SequentialSampler
+from transformers import Trainer
+from transformers.data.metrics.squad_metrics import (
+    compute_predictions_logits, squad_evaluate)
+from transformers.data.processors.squad import SquadResult
+
+# Create logger
+logger = logging.getLogger(__name__)
 
 
 class CustomTrainer(Trainer):
@@ -21,36 +30,42 @@ class CustomTrainer(Trainer):
     ):
         # The first thing we will do just like the training inner loop is get the
         # training dataloader
+        start = time.time()
         train_loader = self.get_train_dataloader()
+        eval_loader = self.get_eval_dataloader()
 
         # Get number of epochs and max steps
         number_of_epochs = args.num_train_epochs
-        max_steps = math.ceil(args.num_train_epochs * len(train_loader))
 
         # In our case we will set our own optimizer internally
-        self.optimizer = optim.Adam(model.parameters(), lr=args.learning_rate)
+        self.optimizer = optim.Adam(model.parameters(), lr=args.learning_rate)  # noqa
 
         # Implement a learning rate scheduler
         self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, 1, gamma=0.9)
 
+        train_step_losses = []
         # Train the model over epochs
         for epoch in range(number_of_epochs):
+            path = f"./model_weights/text-mining-titans-roberta-qa-cp{epoch}.pt"
+
+            # Model is a part of the class noqa here
+            model.train()  # noqa
             train_loss_per_epoch = 0
-            train_acc_per_epoch = 0
-            with tqdm(train_loader, unit="batch") as training_epoch:
+
+            with tqdm.tqdm(train_loader, unit="batch") as training_epoch:
                 training_epoch.set_description(f"Training epoch {epoch}")
-                for step, data in enumerate(training_epoch):
+                for step, data in enumerate(train_loader):
                     # Zero out the optimizer
                     self.optimizer.zero_grad()
 
                     # Set up the inputs
-                    input_ids = data["input_ids"]
-                    attention_mask = data["attention_mask"]
-                    start_positions = data["start_positions"]
-                    end_positions = data["end_positions"]
+                    input_ids = data["input_ids"].to(args.device)
+                    attention_mask = data["attention_mask"].to(args.device)
+                    start_positions = data["start_positions"].to(args.device)
+                    end_positions = data["end_positions"].to(args.device)
 
                     # Get the outputs of the model
-                    outputs = model(
+                    outputs = model(  # noqa
                         input_ids,
                         attention_mask=attention_mask,
                         start_positions=start_positions,
@@ -64,10 +79,62 @@ class CustomTrainer(Trainer):
                     loss.backward()
 
                     # Apply gradients
-                    optimizer.set()
+                    self.optimizer.step()
 
                     # Set loss description
                     training_epoch.set_postfix(loss=loss.item())
+
+                    # Update the training loss per epoch
+                    train_loss_per_epoch += loss.item()
+                    train_step_losses.append(loss.item())
+
+            # Step with the scheduler after the epoch
+            self.scheduler.step()
+            train_loss_per_epoch /= len(train_loader)
+
+            # Save the model
+            torch.save(model.state_dict(), path)  # noqa
+
+            # Setup the evaluation process at the end of each epoch
+            eval_loss_per_epoch = 0
+            model.eval()  # noqa
+
+            with torch.no_grad():
+                with tqdm.tqdm(eval_loader, unit="batch") as eval_epoch:
+                    eval_epoch.set_description(f"Evaluation Epoch {epoch}")
+
+                    for eval_step, eval_data in enumerate(eval_loader):
+                        input_ids = eval_data["input_ids"].to(args.device)
+                        attention_mask = eval_data["attention_mask"].to(args.device)
+                        start_positions = eval_data["start_positions"].to(args.device)
+                        end_positions = eval_data["end_positions"].to(args.device)
+
+                        # Get the outputs of the model
+                        outputs = model(  # noqa
+                            input_ids,
+                            attention_mask=attention_mask,
+                            start_positions=start_positions,
+                            end_positions=end_positions,
+                        )
+
+                        # Eval loss
+                        eval_loss = outputs.loss
+                        eval_loss_per_epoch += eval_loss.item()
+
+                # compute the loss per epoch
+                eval_loss_per_epoch /= len(eval_loader)
+
+                # Print the training and evaluation losses
+                print(f"Train Loss: {train_loss_per_epoch}")
+                print(f"Eval Loss: {eval_loss_per_epoch}")
+
+        # Get the end time
+        end = time.time()
+        print(f"Time: {(end - start) / 60.0}")
+
+        # Save train step losses
+        train_step_losses = pd.Series(train_step_losses)
+        train_step_losses.to_csv("train-step-losses.csv")
 
 
 def prepare_train_features(examples, tokenizer, max_length, doc_stride):
@@ -214,175 +281,118 @@ def prepare_validation_features(examples, tokenizer, max_length, doc_stride):
     return tokenized_examples
 
 
-def train_single_epoch(data_loader, model, optimizer, device):
-    """
-    Function that runs a pytorch based training. For the model training
-    with question and answering we will need the input_ids,
-    attention mask, start and ending positions
-    """
-    # TODO: Set up loss meter
-    # TODO: Get working with GPU
-    step_losses = []
-
-    # Put model in training mode
-    model.train()
-
-    # Description of training
-    tqdm_loop = tqdm.tqdm(data_loader, leave=True)
-
-    for data in tqdm_loop:
-        # Zero out the gradients from the optimizer
-        optimizer.zero_grad()
-
-        # Get all of the outputs
-        input_ids = data["input_ids"].to(device)
-        attention_mask = data["attention_mask"].to(device)
-        start_positions = data["start_positions"].to(device)
-        end_positions = data["end_positions"].to(device)
-
-        # Get the outputs of the model - remember that
-        # at least with the QA models the first output of the
-        # model will be the loss
-        outputs = model(
-            input_ids,
-            attention_mask=attention_mask,
-            start_positions=start_positions,
-            end_positions=end_positions,
-        )
-
-        # Gather the loss
-        loss = outputs.loss
-        step_losses.append(loss)
-
-        # Calculate the gradients in the backward pass
-        loss.backward()
-
-        # update the gradients with the optimizer
-        optimizer.step()
-
-        # tqdm description
-        tqdm_loop.set_postfix(loss=loss.item())
-
-    return step_losses
+def to_list(tensor):
+    return tensor.detach().cpu().tolist()
 
 
-def question_and_answer_evaluation(
-    model, data_loader, validation_datasets, device
-):  # noqa
-    """
-    Function to perform the evaluation for the question and answer
-    validation set.
-    """
-    start_logits_list = []
-    end_logits_list = []
+def evaluate(output_dir, model, tokenizer, device, datasets, prefix=""):
+    batch_size = 4
+    model_type = "roberta"
+    dataset, examples, features = datasets
 
-    # tqdm loop for validation
-    tqdm_loop = tqdm.tqdm(data_loader, leave=True)
+    # Note that DistributedSampler samples randomly
+    eval_sampler = SequentialSampler(dataset)
+    eval_dataloader = DataLoader(dataset, sampler=eval_sampler, batch_size=batch_size)
 
-    # Get the predictions from the model
-    model.eval()
-    with torch.no_grad():
-        for data in tqdm_loop:
-            # Get the model inputs
-            input_ids = data["input_ids"].to(device)
-            attention_mask = data["attention_mask"].to(device)
+    # Eval!
+    logger.info("***** Running evaluation {} *****".format(prefix))
+    logger.info("  Num examples = %d", len(dataset))
+    logger.info("  Batch size = %d", batch_size)
 
-            # Get the predictions
-            predictions = model(input_ids, attention_mask=attention_mask)
-            start_logits = predictions.start_logits.detach().cpu().numpy()
-            end_logits = predictions.end_logits.detach().cpu().numpy()
+    all_results = []
+    start_time = timeit.default_timer()
 
-            # append to list to get the full prediction set
-            start_logits_list.append(start_logits)
-            end_logits_list.append(end_logits)
+    for batch in tqdm.tqdm(eval_dataloader, desc="Evaluating"):
+        model.eval()
+        batch = tuple(t.to(device) for t in batch)
 
-            import pdb
-
-            pdb.set_trace()
-
-    # Concatenate the predictions
-    start_logits = np.concatenate(start_logits_list)
-    end_logits = np.concatenate(end_logits_list)
-
-    # Get the tokenized dataset
-    eval_set = validation_datasets["validation_data"]
-    raw_validation_data = validation_datasets["raw_validation_data"]
-
-    # Set up the example to features from the evalset
-    example_to_features = collections.defaultdict(list)
-    for idx, feature in enumerate(eval_set):
-        example_to_features[feature["example_id"]].append(idx)
-
-    # Set parameters for finding best answer
-    n_best = 20
-    max_answer_length = 30
-    predicted_answers = []
-
-    for example in raw_validation_data:
-        # Get the example id from the original validation
-        # dataset
-        example_id = example["id"]
-        context = example["context"]
-        answers = []
-
-        # Iterate over the different features
-        for feature_index in example_to_features[example_id]:
-            start_logit = start_logits[feature_index]
-            end_logit = end_logits[feature_index]
-            offsets = eval_set["offset_mapping"][feature_index]
-
-            # Get the start and end indexes
-            # We need to resort to get the highest values
-            start_indexes = np.argsort(start_logit)[::-1][:n_best]
-            end_indexes = np.argsort(end_logit)[::-1][:n_best]
-
-            # Iterate throught the indexes to get the answer
-            for start_index in start_indexes:
-                for end_index in end_indexes:
-                    # Skip over answers that are not fully in the context
-                    if (
-                        offsets[start_index] is None
-                        or offsets[end_index] is None  # noqa
-                    ):  # noqa
-                        continue
-
-                    # Skip answers with a length that is
-                    # either < 0 or > max_answer_length
-                    if (
-                        end_index < start_index
-                        or end_index - start_index + 1 > max_answer_length
-                    ):
-                        continue
-
-                    answers.append(
-                        {
-                            "text": context[
-                                offsets[start_index][0] : offsets[end_index][1]  # noqa
-                            ],
-                            "logit_score": start_logit[start_index]
-                            + end_logit[end_index],
-                        }
-                    )
-
-        # Get the best answer for evaluating the metric
-        best_answer = max(answers, key=lambda x: x["logit_score"])
-        predicted_answers.append(
-            {
-                "id": example_id,
-                "prediction_text": best_answer["text"],
-                "no_answer_probability": 0.0,
+        with torch.no_grad():
+            inputs = {
+                "input_ids": batch[0],
+                "attention_mask": batch[1],
+                "token_type_ids": batch[2],
             }
-        )
 
-    # Setup the metric
-    metric = evaluate.load("squad_v2")
+            if model_type in [
+                "xlm",
+                "roberta",
+                "distilbert",
+                "camembert",
+                "bart",
+                "longformer",
+            ]:
+                del inputs["token_type_ids"]
 
-    # Set up the answers
-    theoretical_answers = [
-        {"id": ex["id"], "answers": ex["answers"]} for ex in raw_validation_data  # noqa
-    ]
+            feature_indices = batch[3]
 
-    # Return the metric
-    return metric.compute(
-        predictions=predicted_answers, references=theoretical_answers
-    )  # noqa
+            # Get the predicted outputs
+            outputs = model(**inputs)
+
+        for i, feature_index in enumerate(feature_indices):
+            eval_feature = features[feature_index.item()]
+            unique_id = int(eval_feature.unique_id)
+
+            output = [to_list(output[i]) for output in outputs.to_tuple()]
+
+            # Some models (XLNet, XLM) use 5 arguments for their predictions, while the other "simpler"
+            # models only use two.
+            if len(output) >= 5:
+                start_logits = output[0]
+                start_top_index = output[1]
+                end_logits = output[2]
+                end_top_index = output[3]
+                cls_logits = output[4]
+
+                result = SquadResult(
+                    unique_id,
+                    start_logits,
+                    end_logits,
+                    start_top_index=start_top_index,
+                    end_top_index=end_top_index,
+                    cls_logits=cls_logits,
+                )
+
+            else:
+                start_logits, end_logits = output
+                result = SquadResult(unique_id, start_logits, end_logits)
+
+            all_results.append(result)
+
+    evalTime = timeit.default_timer() - start_time
+    logger.info(
+        "  Evaluation done in total %f secs (%f sec per example)",
+        evalTime,
+        evalTime / len(dataset),
+    )
+
+    # Compute predictions
+    output_prediction_file = os.path.join(
+        output_dir, "predictions_{}.json".format(prefix)
+    )
+    output_nbest_file = os.path.join(
+        output_dir, "nbest_predictions_{}.json".format(prefix)
+    )
+    output_null_log_odds_file = os.path.join(
+        output_dir, "null_odds_{}.json".format(prefix)
+    )
+
+    # TODO: Get defualt inputs for this function
+    predictions = compute_predictions_logits(
+        examples,
+        features,
+        all_results,
+        n_best_size=20,
+        max_answer_length=30,
+        do_lower_case=True,
+        output_prediction_file=output_prediction_file,
+        output_nbest_file=output_nbest_file,
+        output_null_log_odds_file=output_null_log_odds_file,
+        verbose_logging=False,
+        version_2_with_negative=True,
+        null_score_diff_threshold=0.0,
+        tokenizer=tokenizer,
+    )
+
+    # Compute the F1 and exact scores.
+    results = squad_evaluate(examples, predictions)
+    return results, examples, predictions

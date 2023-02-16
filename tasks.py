@@ -1,81 +1,117 @@
+# stdlib
+import logging
+
 # third party
 import torch
-import torch.optim as optim
-from torch.utils.data import DataLoader
-from transformers import AutoTokenizer, RobertaForQuestionAnswering
+from transformers import (
+    AutoConfig,
+    AutoModelForQuestionAnswering,
+    AutoTokenizer,
+    DefaultDataCollator,
+    TrainingArguments,
+)
 
 # first party
-from data import SquadDataset, load_squad_data
-from utils import train_single_epoch, question_and_answer_evaluation
+from data import SquadDataset, load_examples
+from utils import CustomTrainer, evaluate
 
-# TODO: set up logger
+# Create logger
+logger = logging.getLogger(__name__)
 
 
-def train_model():
+def train_model(create_training_data=False):
     """
     Function to train the QA model
     """
-    # model_name
+    # configuration
     model_name = "roberta-base"
-    batch_size = 16
-    path = "./model_weights/text-mining-titans-roberta-qa.pt"
+    batch_size = 4
+    data_dir = "./squad_data"
+    train_data_file = "train-v2.0.json"
+    validation_data_file = "dev-v2.0.json"
 
     # Set up the device
     device = (
-        torch.device("cuda")
+        torch.device("cuda:0")
         if torch.cuda.is_available()
         else torch.device("cpu")  # noqa
     )  # noqa
 
     # Setup the model and tokenizer
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-    model = RobertaForQuestionAnswering.from_pretrained(model_name)
-    model = model.to(device)
+    config = AutoConfig.from_pretrained(model_name)
+    tokenizer = AutoTokenizer.from_pretrained(
+        model_name, do_lower_case=True, use_fast=False
+    )
+    model = AutoModelForQuestionAnswering.from_pretrained(model_name, config=config)
 
-    # Load the training and the validation data
-    training_data, validation_datasets = load_squad_data(tokenizer)
-    validation_data = validation_datasets["validation_data"]
+    # Create features for SQUAD-V2 data
+    if create_training_data:
+        train_dataset = load_examples(
+            data_dir=data_dir,
+            data_file=train_data_file,
+            tokenizer=tokenizer,
+            evaluate=False,
+            output_examples=False,
+        )
+        torch.save(train_dataset, "train_dataset.pt")
+    else:
+        train_dataset = torch.load("train_dataset.pt")
 
-    # Setup the training and validation dataset for loading into torch
-    train_dataset = SquadDataset(training_data, mode="training")
-    validation_dataset = SquadDataset(validation_data, mode="validation")
+    # Create the validation set
+    validation_dataset, validation_examples, validation_features = load_examples(
+        data_dir=data_dir,
+        data_file=validation_data_file,
+        tokenizer=tokenizer,
+        evaluate=True,
+        output_examples=True,
+    )
+    validation_datasets = (validation_dataset, validation_examples, validation_features)
 
-    # Set up the training and validation data loaders
-    train_loader = DataLoader(
-        train_dataset, batch_size=batch_size, shuffle=True
-    )  # noqa
-    validation_loader = DataLoader(
-        validation_dataset, batch_size=batch_size, shuffle=False
+    # Create the train test split
+    training_dataset = train_dataset[: (len(train_dataset) - 10000)]
+    test_dataset = train_dataset[(len(train_dataset) - 10000) :]
+
+    # Convert the training and test data into a Dataset
+    training_dataset = SquadDataset(training_dataset, mode="training")
+    test_dataset = SquadDataset(test_dataset, mode="training")
+
+    # Setup training aruguments and trainer
+    data_collator = DefaultDataCollator()
+
+    # Setup training arguments
+    training_args = TrainingArguments(
+        output_dir="model_weights",
+        evaluation_strategy="epoch",
+        learning_rate=2e-5,
+        per_device_train_batch_size=batch_size,
+        per_device_eval_batch_size=batch_size,
+        num_train_epochs=3,
+        weight_decay=0.01,
+        push_to_hub=False,
     )
 
-    # Setup the optimizer that we will use to fine-tune the model
-    # For most cases Adam or AdamW work fine
-    lr = 2e-5
-    optimizer = optim.AdamW(model.parameters(), lr=lr)
+    # Setup trainer
+    trainer = CustomTrainer(
+        model=model,
+        args=training_args,
+        train_dataset=training_dataset,
+        eval_dataset=test_dataset,
+        tokenizer=tokenizer,
+        data_collator=data_collator,
+    )
 
-    # Number of epochs for training
-    epochs = 3
+    # Train model
+    trainer.train()
 
-    # Run the model training
-    # We will certainly need to run this on a GPU we
-    # can use MSI
-    # TODO: Save losses
-    for epoch in range(epochs):
-        losses = train_single_epoch(
-            model=model,
-            data_loader=train_loader,
-            optimizer=optimizer,
-            device=device,
-        )
+    # Get the evaluation for the final checkpoint
+    results, examples, predictions = evaluate(
+        output_dir="prediction_outputs",
+        model=model,
+        tokenizer=tokenizer,
+        device=device,
+        datasets=validation_datasets,
+        prefix="final_evaluation",
+    )
 
-        # Evaluate the model
-        evaluation_metrics = question_and_answer_evaluation(
-            model=model,
-            data_loader=validation_loader,
-            validation_datasets=validation_datasets,
-            device=device,
-        )
-        print(evaluation_metrics)
-
-    # After training save the model
-    torch.save(model.state_dict(), path)
+    # log the results
+    logger.info(f"Results : {results}")

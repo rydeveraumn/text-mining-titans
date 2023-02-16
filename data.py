@@ -100,44 +100,33 @@ class SquadDataset(Dataset):
 
     def __init__(self, data, mode="training"):  # noqa
         self.data = data
-        self.input_ids = data["input_ids"]
-        self.attention_mask = data["attention_mask"]
+        self.input_ids = data[0].tolist()
+        self.attention_mask = data[1].tolist()
         self.mode = mode
 
         # If mode is training then we need to extract
         # the start and stop positions
         if self.mode == "training":
-            available_features = data.features.keys()
-            if "start_positions" not in available_features:
-                raise ValueError(
-                    "Training data does not have the correct format!"
-                )  # noqa
-
-            self.start_positions = data["start_positions"]
-            self.end_positions = data["end_positions"]
+            # Add the start and end positions
+            self.start_positions = data[3].tolist()
+            self.end_positions = data[4].tolist()
 
     def __len__(self):  # noqa
-        return len(self.data)
+        return len(self.input_ids)
 
     def __getitem__(self, idx):  # noqa
         # We need to get the outputs for all of the texts
         # Contexts
         # Set up input ids to be torch tensors
         input_ids = torch.tensor(self.input_ids[idx], dtype=torch.long)
-        attention_mask = torch.tensor(
-            self.attention_mask[idx], dtype=torch.long
-        )  # noqa
+        attention_mask = torch.tensor(self.attention_mask[idx], dtype=torch.long)
 
         # Gather outputs
         outputs = {"input_ids": input_ids, "attention_mask": attention_mask}
 
         if self.mode == "training":
-            start_positions = torch.tensor(
-                self.start_positions[idx], dtype=torch.long
-            )  # noqa
-            end_positions = torch.tensor(
-                self.end_positions[idx], dtype=torch.long
-            )  # noqa
+            start_positions = torch.tensor(self.start_positions[idx], dtype=torch.long)
+            end_positions = torch.tensor(self.end_positions[idx], dtype=torch.long)
 
             outputs["start_positions"] = start_positions
             outputs["end_positions"] = end_positions
