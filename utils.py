@@ -41,8 +41,6 @@ class CustomTrainer(Trainer):
         # Get number of epochs and max steps
         number_of_epochs = args.num_train_epochs
 
-        import pdb; pdb.set_trace()
-
         # In our case we will set our own optimizer internally
         self.optimizer = optim.Adam(self.model.parameters(), lr=args.learning_rate)  # noqa
 
