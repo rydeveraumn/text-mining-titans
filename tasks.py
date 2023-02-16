@@ -133,3 +133,7 @@ def train_model(create_training_data=False):
 
     # For the final output build the incorrect samples
     build_incorrect_samples(examples, predictions)
+
+
+if __name__ == "__main__":
+    train_model()
