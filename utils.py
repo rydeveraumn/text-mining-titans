@@ -12,7 +12,9 @@ import tqdm
 from torch.utils.data import DataLoader, SequentialSampler
 from transformers import Trainer
 from transformers.data.metrics.squad_metrics import (
-    compute_predictions_logits, squad_evaluate)
+    compute_predictions_logits,
+    squad_evaluate,
+)
 from transformers.data.processors.squad import SquadResult
 
 # Create logger
@@ -134,7 +136,7 @@ class CustomTrainer(Trainer):
 
         # Save train step losses
         train_step_losses = pd.Series(train_step_losses)
-        train_step_losses.to_csv("train-step-losses.csv")
+        train_step_losses.to_csv("./results/train-step-losses.csv", index=False)
 
 
 def prepare_train_features(examples, tokenizer, max_length, doc_stride):

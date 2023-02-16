@@ -105,7 +105,7 @@ def train_model(create_training_data=False):
 
     # Get the evaluation for the final checkpoint
     results, examples, predictions = evaluate(
-        output_dir="prediction_outputs",
+        output_dir="results",
         model=model,
         tokenizer=tokenizer,
         device=device,
@@ -115,3 +115,18 @@ def train_model(create_training_data=False):
 
     # log the results
     logger.info(f"Results : {results}")
+
+    # Create the loss plot
+    losses = pd.read_csv("./results/train-step-losses.csv")
+
+    # Create the figure and axes and build plot
+    fig, ax = plt.subplots(1, 1, figsize=(15, 5))
+    losses.rolling(20).mean().plot(ax=ax)
+    ax.set_title("Training Loss Per Step")
+    ax.set_xlabel("Steps")
+    ax.set_ylabel("Loss")
+    ax.grid()
+
+    # Save figure
+    fig.tight_layout()
+    fig.savefig("./results/training_loss.png")
