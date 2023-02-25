@@ -42,7 +42,7 @@ class CustomTrainer(Trainer):
         number_of_epochs = args.num_train_epochs
 
         # In our case we will set our own optimizer internally
-        self.optimizer = optim.Adam(model.parameters(), lr=args.learning_rate)  # noqa
+        self.optimizer = optim.Adam(self.model.parameters(), lr=args.learning_rate)  # noqa
 
         # Implement a learning rate scheduler
         self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, 1, gamma=0.9)
@@ -53,7 +53,7 @@ class CustomTrainer(Trainer):
             path = f"./model_weights/text-mining-titans-roberta-qa-cp{epoch}.pt"
 
             # Model is a part of the class noqa here
-            model.train()  # noqa
+            self.model.train()  # noqa
             train_loss_per_epoch = 0
 
             with tqdm.tqdm(train_loader, unit="batch") as training_epoch:
@@ -69,7 +69,7 @@ class CustomTrainer(Trainer):
                     end_positions = data["end_positions"].to(args.device)
 
                     # Get the outputs of the model
-                    outputs = model(  # noqa
+                    outputs = self.model(  # noqa
                         input_ids,
                         attention_mask=attention_mask,
                         start_positions=start_positions,
@@ -97,11 +97,11 @@ class CustomTrainer(Trainer):
             train_loss_per_epoch /= len(train_loader)
 
             # Save the model
-            torch.save(model.state_dict(), path)  # noqa
+            torch.save(self.model.state_dict(), path)  # noqa
 
             # Setup the evaluation process at the end of each epoch
             eval_loss_per_epoch = 0
-            model.eval()  # noqa
+            self.model.eval()  # noqa
 
             with torch.no_grad():
                 with tqdm.tqdm(eval_loader, unit="batch") as eval_epoch:
@@ -114,7 +114,7 @@ class CustomTrainer(Trainer):
                         end_positions = eval_data["end_positions"].to(args.device)
 
                         # Get the outputs of the model
-                        outputs = model(  # noqa
+                        outputs = self.model(  # noqa
                             input_ids,
                             attention_mask=attention_mask,
                             start_positions=start_positions,
