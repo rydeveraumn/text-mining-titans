@@ -21,7 +21,7 @@ from sklearn.model_selection import train_test_split
 fpath = "ngram_authorship_train"
 
 
-def load_data(split="paragraph"):
+def load_data(split="sentence"):
     """
     Function to load the data from the author text files. The way
     we will load in the data is to treat each paragraph as a full
@@ -44,6 +44,8 @@ def load_data(split="paragraph"):
             data = open(filename).read().splitlines()
 
             # Combine the paragrahs
+            # Note: After some thought I don't think this is the right interpretation
+            # afterall. However, I will keep the code for now
             if split == "paragraph":
                 data = [line if line != "" else "\n" for line in data]
                 data = " ".join(data).split("\n")
