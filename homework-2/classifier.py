@@ -29,12 +29,12 @@ class InterpolatedLanguageModel(LanguageModel):
     Do not instantiate this class directly!
     """
 
-    def __init__(self, smoothing_cls, order, **kwargs):
+    def __init__(self, smoothing_cls, order, **kwargs):  # noqa
         params = kwargs.pop("params", {})
         super().__init__(order, **kwargs)
         self.estimator = smoothing_cls(self.vocab, self.counts, **params)
 
-    def unmasked_score(self, word, context=None):
+    def unmasked_score(self, word, context=None):  # noqa
         near_zero = 1e-10
         if not context:
             # The base recursion case: no context, we only have a unigram.
@@ -63,7 +63,7 @@ class InterpolatedLanguageModel(LanguageModel):
 class WittenBellInterpolated(InterpolatedLanguageModel):
     """Interpolated version of Witten-Bell smoothing."""
 
-    def __init__(self, order, **kwargs):
+    def __init__(self, order, **kwargs):  # noqa
         super().__init__(WittenBell, order, **kwargs)
 
 
