@@ -6,19 +6,65 @@ import os
 import numpy as np
 import pandas as pd
 from nltk.lm import (
-    MLE,
+    MLE,  # WittenBellInterpolated,
     AbsoluteDiscountingInterpolated,
     KneserNeyInterpolated,
     Laplace,
     StupidBackoff,
-    WittenBellInterpolated,
 )
+from nltk.lm.api import LanguageModel
 from nltk.lm.preprocessing import pad_both_ends, padded_everygram_pipeline
+from nltk.lm.smoothing import WittenBell
 from nltk.tokenize import RegexpTokenizer, sent_tokenize
 from nltk.util import bigrams, trigrams
+from sklearn.metrics import accuracy_score
 from sklearn.model_selection import train_test_split
 
 fpath = "ngram_authorship_train"
+
+
+class InterpolatedLanguageModel(LanguageModel):
+    """Logic common to all interpolated language models.
+    The idea to abstract this comes from Chen & Goodman 1995.
+    Do not instantiate this class directly!
+    """
+
+    def __init__(self, smoothing_cls, order, **kwargs):
+        params = kwargs.pop("params", {})
+        super().__init__(order, **kwargs)
+        self.estimator = smoothing_cls(self.vocab, self.counts, **params)
+
+    def unmasked_score(self, word, context=None):
+        near_zero = 1e-10
+        if not context:
+            # The base recursion case: no context, we only have a unigram.
+            return self.estimator.unigram_score(word)
+        if not self.counts[context]:
+            # It can also happen that we have no data for this context.
+            # In that case we defer to the lower-order ngram.
+            # This is the same as setting alpha to 0 and gamma to 1.
+            alpha, gamma = near_zero, 1
+        else:
+            alpha, gamma = self.estimator.alpha_gamma(word, context)
+            alpha = alpha + near_zero
+
+        return alpha + gamma * self.unmasked_score(word, context[1:])
+
+    def entropy(self, text_ngrams):
+        """Calculate cross-entropy of model for given evaluation text.
+        :param Iterable(tuple(str)) text_ngrams: A sequence of ngram tuples.
+        :rtype: float
+        """
+        return -1 * np.mean(
+            [self.logscore(ngram[-1], ngram[:-1]) for ngram in text_ngrams],
+        )
+
+
+class WittenBellInterpolated(InterpolatedLanguageModel):
+    """Interpolated version of Witten-Bell smoothing."""
+
+    def __init__(self, order, **kwargs):
+        super().__init__(WittenBell, order, **kwargs)
 
 
 def load_data(split="sentence"):
@@ -107,7 +153,7 @@ def train(train_data, authorlist, model_type="MLE", n=3, **kwargs):
             model = WittenBellInterpolated(order=n)
 
         elif model_type == "StupidBackoff":
-            model = StupidBackoff(order=n)
+            model = StupidBackoff(order=n, **kwargs)
 
         else:
             raise ValueError("model does not exists!")
@@ -146,7 +192,6 @@ def predict(test_data, authorlist, models):
 
     # Remove attributes
     models = {k: v for k, v in models.items() if k != "attributes"}
-    print(models)
 
     # Create the text & labels
     test_text = test_data["text"].tolist()
@@ -157,29 +202,24 @@ def predict(test_data, authorlist, models):
     mapping = dict(zip(authorlist, range(len(authorlist))))
     labels = list(map(lambda x: mapping[x], labels))
 
-    # Use the n_gram creator
-    if n == 2:
-        method = bigrams
-
-    elif n == 3:
-        method = trigrams
-
-    else:
-        raise ValueError("This n is not an option!")
-
     # Iterate over the test data and the models
     predictions = []
     for text in test_text:
         # Set up the bigrams / trigrams. Note that this n in
         # pad_both_ends is not the same n used to define the
         # bigrams / trigrams
-        text = list(method(pad_both_ends(text, n=2)))
+        bigram_text = list(bigrams(pad_both_ends(text, n=2)))
+        trigram_text = list(trigrams(pad_both_ends(text, n=4)))
 
         # Go through the models
         author_perplexity = []
         for author_name in authorlist:
             model = models[author_name]
-            score = model.perplexity(text)
+
+            # Combine bigrams + trigrams perplexity
+            score_bigrams = model.perplexity(bigram_text)
+            score_trigrams = model.perplexity(trigram_text)
+            score = (score_bigrams + score_trigrams) / 2.0
 
             # Append the score
             author_perplexity.append(score)
@@ -187,6 +227,31 @@ def predict(test_data, authorlist, models):
         # Get the argmin for prediction
         author_index = np.argmin(author_perplexity)
         predictions.append(author_index)
+
+    # Turn labels and predictions into numpy array
+    labels = np.asarray(labels)
+    predictions = np.asarray(predictions)
+
+    # Calculate the overall accuracy and the author
+    # specific accuracy
+    for index, author_name in enumerate(authorlist):
+        # Get the author specific labels
+        mask = labels == index
+
+        # Get the data
+        author_predictions = predictions[mask]
+        author_labels = labels[mask]
+
+        # Get the numerator and demoninator
+        num = (author_labels == author_predictions).sum()
+        den = len(author_labels)
+        score = num / den
+
+        print(f"Accuracy for {author_name} = {score}")
+
+    # Get overall accuracy
+    overall_score = accuracy_score(labels, predictions)
+    print(f"Overall accuracy = {overall_score}")
 
     return predictions, labels
 
