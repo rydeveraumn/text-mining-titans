@@ -314,6 +314,7 @@ def main_task(filenames, test_filenames=None):
 
 
 if __name__ == "__main__":
+    print(sys.argv)
     authorlist_filename_index = sys.argv.index("authorlist.txt")
     authorlist_filename = sys.argv[authorlist_filename_index]
     filenames = open(authorlist_filename).read().splitlines()
