@@ -73,7 +73,7 @@ def prepare_data(filename, author_name, split):
     Function that prepares the data.
     """
     # Read in the data
-    data = open(filename).read().splitlines()
+    data = open(filename, encoding='utf-8').read().splitlines()
 
     # Combine the paragrahs
     # Note: After some thought I don't think this is the right interpretation
@@ -247,7 +247,7 @@ def predict(test_data, authorlist, models):
         # pad_both_ends is not the same n used to define the
         # bigrams / trigrams
         bigram_text = list(bigrams(pad_both_ends(text, n=2)))
-        trigram_text = list(trigrams(pad_both_ends(text, n=4)))
+        trigram_text = list(trigrams(pad_both_ends(text, n=3)))
 
         # Go through the models
         author_perplexity = []
@@ -311,6 +311,26 @@ def main_task(filenames, test_filenames=None):
 
     # Get the predictions on the dev set
     predictions, labels = predict(test_data, authorlist, models)
+
+    # Let's generate some text!
+    print("Lets generate some text!")
+    for author_name in authorlist:
+        model = models[author_name]
+
+        # Let's get the mean of the sentences from each author
+        author_mask = train_data["author"] == author_name
+        author_text_length = (
+            train_data.loc[author_mask]["text"].apply(lambda x: len(x.split())).mean()
+        )
+        author_text_length = int(np.floor(author_text_length))
+
+        for i in range(5):
+            generated_text = model.generate(author_text_length, random_seed=i)
+            generated_text = [
+                line for line in generated_text if line not in ("<s>", "</s>")
+            ]
+            generated_text = " ".join(generated_text)
+            print(f"{author_name}-generated text {i}: {generated_text}")
 
 
 if __name__ == "__main__":
