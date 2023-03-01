@@ -10,7 +10,6 @@ from nltk.lm import (
     AbsoluteDiscountingInterpolated,
     KneserNeyInterpolated,
     Laplace,
-    StupidBackoff,
 )
 from nltk.lm.api import LanguageModel
 from nltk.lm.preprocessing import pad_both_ends, padded_everygram_pipeline
@@ -68,12 +67,37 @@ class WittenBellInterpolated(InterpolatedLanguageModel):
         super().__init__(WittenBell, order, **kwargs)
 
 
+class StupidBackoff(LanguageModel):
+    """Provides StupidBackoff scores.
+    In addition to initialization arguments from BaseNgramModel also requires
+    a parameter alpha with which we scale the lower order probabilities.
+    Note that this is not a true probability distribution as scores for ngrams
+    of the same order do not sum up to unity.
+    """
+
+    def __init__(self, alpha=0.4, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.alpha = alpha
+
+    def unmasked_score(self, word, context=None):
+        if not context:
+            # Base recursion
+            return self.counts.unigrams.freq(word)
+        counts = self.context_counts(context)
+        word_count = counts[word]
+        norm_count = counts.N()
+        if word_count > 0:
+            return word_count / norm_count
+        else:
+            return self.alpha * self.unmasked_score(word, context[1:]) + 1e-10
+
+
 def prepare_data(filename, author_name, split):
     """
     Function that prepares the data.
     """
     # Read in the data
-    data = open(filename, encoding='utf-8').read().splitlines()
+    data = open(filename, encoding="utf-8").read().splitlines()
 
     # Combine the paragrahs
     # Note: After some thought I don't think this is the right interpretation
@@ -177,16 +201,16 @@ def train(train_data, authorlist, model_type="MLE", n=3, **kwargs):
             model = MLE(order=n)
 
         elif model_type == "Laplace":
-            model = Laplace(order=n)
+            model = Laplace(order=n, **kwargs)
 
         elif model_type == "AbsoluteDiscountingInterpolated":
             model = AbsoluteDiscountingInterpolated(order=n, **kwargs)
 
         elif model_type == "KneserNeyInterpolated":
-            model = KneserNeyInterpolated(order=n)
+            model = KneserNeyInterpolated(order=n, **kwargs)
 
         elif model_type == "WittenBellInterpolated":
-            model = WittenBellInterpolated(order=n)
+            model = WittenBellInterpolated(order=n, **kwargs)
 
         elif model_type == "StupidBackoff":
             model = StupidBackoff(order=n, **kwargs)
