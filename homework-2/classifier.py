@@ -363,7 +363,7 @@ if __name__ == "__main__":
     authorlist_filename = sys.argv[authorlist_filename_index]
     filenames = open(authorlist_filename).read().splitlines()
 
-    if "-test" not in sys.argv:
+    if "testfile.txt" not in sys.argv:
         test_filenames = None
 
     else:
