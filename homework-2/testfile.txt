@@ -1,4 +1,4 @@
-/Users/ryandevera/data-science/umn_environments/text-mining-titans/homework-2/data/ngram_authorship_test/austen_test_sents_utf8.txt
-/Users/ryandevera/data-science/umn_environments/text-mining-titans/homework-2/data/ngram_authorship_test/dickens_test_sents_utf8.txt
-/Users/ryandevera/data-science/umn_environments/text-mining-titans/homework-2/data/ngram_authorship_test/tolstoy_test_sents_utf8.txt
-/Users/ryandevera/data-science/umn_environments/text-mining-titans/homework-2/data/ngram_authorship_test/wilde_test_sents_utf8.txt
+./data/ngram_authorship_test/austen_test_sents_utf8.txt
+./data/ngram_authorship_test/dickens_test_sents_utf8.txt
+./data/ngram_authorship_test/tolstoy_test_sents_utf8.txt
+./data/ngram_authorship_test/wilde_test_sents_utf8.txt
