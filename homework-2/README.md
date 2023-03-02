@@ -1,8 +1,8 @@
 # CSCI Homework 2 README 📚
--
+--
 
 ## Running Code 💻
--
+--
 ### `authorlist.txt` and `testfile.txt`
 
 We held a lot of conversations in the group slack and just for good measure we wanted to place the assumptions that we have for the contents of the input files. We assume that `authorlist.txt` is a text file with a list of paths to each author's text file on the local comptuter it will be run on. For example, here was the content of our `authorlist.txt` and `testfile.txt`
