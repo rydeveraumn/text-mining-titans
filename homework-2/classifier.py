@@ -279,9 +279,13 @@ def predict(test_data, authorlist, models):
             model = models[author_name]
 
             # Combine bigrams + trigrams perplexity
-            score_bigrams = model.perplexity(bigram_text)
-            score_trigrams = model.perplexity(trigram_text)
-            score = (score_bigrams + score_trigrams) / 2.0
+            if n == 2:
+                score = model.perplexity(bigram_text)
+
+            elif n == 3:
+                bigram_score = model.perplexity(bigram_text)
+                trigram_score = model.perplexity(trigram_text)
+                score = (bigram_score + trigram_score) / 2.0
 
             # Append the score
             author_perplexity.append(score)
