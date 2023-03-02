@@ -1,8 +1,8 @@
-/Users/ryandevera/data-science/umn_environments/text-mining-titans/homework-2/data/ngram_authorship_train/austen_utf8.txt
-/Users/ryandevera/data-science/umn_environments/text-mining-titans/homework-2/data/ngram_authorship_train/dickens_utf8.txt
-/Users/ryandevera/data-science/umn_environments/text-mining-titans/homework-2/data/ngram_authorship_train/tolstoy_utf8.txt
-/Users/ryandevera/data-science/umn_environments/text-mining-titans/homework-2/data/ngram_authorship_train/wilde_utf8.txt
-/Users/ryandevera/data-science/umn_environments/text-mining-titans/homework-2/data/ngram_authorship_train/austen.txt
-/Users/ryandevera/data-science/umn_environments/text-mining-titans/homework-2/data/ngram_authorship_train/dickens.txt
-/Users/ryandevera/data-science/umn_environments/text-mining-titans/homework-2/data/ngram_authorship_train/tolstoy.txt
-/Users/ryandevera/data-science/umn_environments/text-mining-titans/homework-2/data/ngram_authorship_train/wilde.txt
+./data/ngram_authorship_train/austen_utf8.txt
+./data/ngram_authorship_train/dickens_utf8.txt
+./data/ngram_authorship_train/tolstoy_utf8.txt
+./data/ngram_authorship_train/wilde_utf8.txt
+./data/ngram_authorship_train/austen.txt
+./data/ngram_authorship_train/dickens.txt
+./data/ngram_authorship_train/tolstoy.txt
+./data/ngram_authorship_train/wilde.txt
