@@ -1,8 +1,9 @@
 # third party
+import evaluate
 import numpy as np
 import pandas as pd
 import torch
-from datasets import load_dataset
+from datasets import load_dataset, load_metric
 from tqdm import tqdm
 from transformers import (
     AutoModelForCausalLM,
@@ -51,39 +52,48 @@ def calc_perplexity(model, sentence):
 
 
 def calc_stats(mname, model, tokenizer, outputs, perplexity=True):
-    """
-    Function that we will use to calculate the stats of our methods
-    """
-    if not perplexity:
+    if perplexity == False:
         rand_idx = np.random.randint(len(outputs))
-        return {"responses": outputs, "nll": 0, "ppl": 0, "ppl_argmin": rand_idx}
+        return {"responses": outputs, "nll": 0, "ppl": 0, "ppl_argmin": rand_idx}, None
 
     nlls = []
     ppls = []
+    full_results_list = []
+    # Just add the results here instead
     print(mname + ":\n" + 100 * "-")
     for i, output in enumerate(outputs):
-        print("{}: {}".format(i, tokenizer.decode(output, skip_special_tokens=True)))
+        # We want to store the full results
+        full_results = {}
+
+        decoded_outputs = tokenizer.decode(output, skip_special_tokens=True)
+        print("{}: {}".format(i, decoded_outputs))
         nll, ppl = calc_perplexity(model, output)
         nlls.append(nll)
         ppls.append(ppl)
-    print(
-        100 * "-"
-        + "\n"
-        + "NLL: {}\tPerplexity: {}".format(np.mean(nlls), np.mean(ppls))
-    )
-    print(100 * "-" + "\n")
+        print(
+            100 * "-"
+            + "\n"
+            + "NLL: {}\tPerplexity: {}".format(np.mean(nlls), np.mean(ppls))
+        )
+        print(100 * "-" + "\n")
 
-    # Let's make this something that we can add to an excel file
+        # Add to results
+        full_results[f"reponse"] = decoded_outputs
+        full_results[f"nll"] = nll.numpy()
+        full_results[f"ppl"] = ppl.numpy()
+        full_results["algorithm_name"] = mname
+
+        full_results_list.append(full_results)
+
+    # Compute the results
     results = {
-        f"response-{index}": tokenizer.decode(response)
-        for index, response in enumerate(outputs)
+        "responses": outputs,
+        "nll": np.min(nlls),
+        "ppl": np.min(ppls),
+        "ppl_argmin": np.argmin(ppls),
     }
-    results["algorithm_name"] = mname
-    results["nll"] = nll.numpy()
-    results["ppl"] = ppl.numpy()
-    results["ppl_argmin"] = np.argmin(ppls)
 
-    return results
+    return results, full_results_list
 
 
 def get_outputs(
@@ -101,7 +111,7 @@ def get_outputs(
     if strategy == "greedy":
         # greedy search
         greedy_output = model.generate(input_ids, max_length=50)
-        out_json = calc_stats(
+        out_json, full_results_list = calc_stats(
             "Greedy Output", model, tokenizer, greedy_output, perplexity=perplexity
         )
 
@@ -115,7 +125,7 @@ def get_outputs(
             num_return_sequences=num_return_sequences,
             early_stopping=True,
         )
-        out_json = calc_stats(
+        out_json, full_results_list = calc_stats(
             "Beam Search Output", model, tokenizer, beam_outputs, perplexity=perplexity
         )
 
@@ -129,7 +139,7 @@ def get_outputs(
             num_return_sequences=num_return_sequences,
             early_stopping=True,
         )
-        out_json = calc_stats(
+        out_json, full_results_list = calc_stats(
             "Random Sampling with temp Output",
             model,
             tokenizer,
@@ -146,7 +156,7 @@ def get_outputs(
             num_return_sequences=num_return_sequences,
             early_stopping=True,
         )
-        out_json = calc_stats(
+        out_json, full_results_list = calc_stats(
             "Top-k Output", model, tokenizer, topk_outputs, perplexity=perplexity
         )
 
@@ -160,7 +170,7 @@ def get_outputs(
             num_return_sequences=num_return_sequences,
             early_stopping=True,
         )
-        out_json = calc_stats(
+        out_json, full_results_list = calc_stats(
             "Top-p Output", model, tokenizer, topp_outputs, perplexity=perplexity
         )
 
@@ -174,7 +184,7 @@ def get_outputs(
             num_return_sequences=num_return_sequences,
             early_stopping=True,
         )
-        out_json = calc_stats(
+        out_json, full_results_list = calc_stats(
             "Top-p, Top-k Output",
             model,
             tokenizer,
@@ -182,7 +192,7 @@ def get_outputs(
             perplexity=perplexity,
         )
 
-    return out_json
+    return out_json, full_results_list
 
 
 def get_paraphrase(
@@ -204,8 +214,9 @@ def get_paraphrase(
     encoding = tokenizer.encode_plus(text, pad_to_max_length=True, return_tensors="pt")
     input_ids = encoding["input_ids"].to(device)
 
-    out_json = get_outputs(
+    out_json, full_results_list = get_outputs(
         model,
+        tokenizer,
         input_ids,
         strategy=strategy,
         perplexity=False,
@@ -230,41 +241,142 @@ def run_tasks():
     # Set up the tokenizer
     print("Generating outputs for task 1 ...")
     tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
-    tokenizer.pad_token_id = tokenizer.eos_token_id
+    # tokenizer.pad_token_id = tokenizer.eos_token_id
 
     # Set up the model
-    model = AutoModelForCausalLM.from_pretrained("gpt2")
+    model = AutoModelForCausalLM.from_pretrained(
+        "gpt2", pad_token_id=tokenizer.eos_token_id
+    )
     input_ids = tokenizer.encode(
         "Men are intelligent and women are", return_tensors="pt"
     )
 
-    output_jsons = []
-    methods = ["greedy", "beam", "sampling", "top_k", "top_p"]
+    outputs = []
+    methods = ["greedy", "beam", "sampling", "top_k", "top_p", "topp_topk"]
     for method in methods:
         if method in ["greedy", "beam", "sampling"]:
-            out_json = get_outputs(model, tokenizer, input_ids, method)
-
-        elif method == "top_k":
-            out_json = get_outputs(model, tokenizer, input_ids, method, top_k=5)
-
-        elif method == "top_p":
-            out_json = get_outputs(model, tokenizer, input_ids, method, top_p=0.80)
-
-        elif method == "topp_topk":
-            out_json = get_outputs(
-                model, tokenizer, input_ids, method, top_k=5, top_p=0.80
+            out_json, full_results_list = get_outputs(
+                model, tokenizer, input_ids, method
             )
 
-        output_jsons.append(out_json)
+        elif method == "top_k":
+            out_json, full_results_list = get_outputs(
+                model, tokenizer, input_ids, method, top_k=5
+            )
+
+        elif method == "top_p":
+            out_json, full_results_list = get_outputs(
+                model, tokenizer, input_ids, method, top_p=0.80
+            )
+
+        elif method == "topp_topk":
+            out_json, full_results_list = get_outputs(
+                model, tokenizer, input_ids, method, top_k=50, top_p=0.80
+            )
+
+        outputs.append(full_results_list)
 
     # Get the outputs
-    outputs = pd.DataFrame(output_jsons).set_index("algorithm_name")
+    outputs = [item for sublist in outputs for item in sublist]
+
+    outputs = pd.DataFrame(outputs).set_index("algorithm_name")
     outputs = outputs[sorted(outputs.columns)]
 
     # Write the outputs to an excel file so we can put it in
     # google sheets
     with pd.ExcelWriter("./results/task_1.xlsx") as writer:
         outputs.to_excel(writer, sheet_name="Task 1")
+
+    # Code for Task 2
+    tokenizer = T5Tokenizer.from_pretrained("hetpandya/t5-base-tapaco")
+    model = T5ForConditionalGeneration.from_pretrained("hetpandya/t5-base-tapaco")
+
+    # Load the dataset
+    dataset = load_dataset("tapaco", "en", split="train")
+
+    cnt = 0
+    response_data = []
+    unique_sentences = np.unique(dataset["paraphrase_set_id"])
+    for uid in unique_sentences:
+        filt_dataset = dataset.filter(
+            lambda example: example["paraphrase_set_id"] == uid
+        )
+        sentences = filt_dataset["paraphrase"]
+
+        paraphrases = []
+        paraphrases.append(sentences[0])
+        paraphrases.append(sentences[1])
+
+        print(sentences)
+
+        for method in methods:
+            paraphrase = get_paraphrase(sentences[0], model, tokenizer, strategy=method)
+            paraphrases.append(paraphrase)
+
+        response_data.append(paraphrases)
+        cnt += 1
+
+        if cnt == 50:
+            break
+
+    response_df = pd.DataFrame(
+        response_data,
+        columns=[
+            "original",
+            "paraphrase",
+            "greedy",
+            "beam",
+            "sampling",
+            "top_k",
+            "top_p",
+            "topp_topk",
+        ],
+    )
+
+    # Task 3 create metrics
+    metrics = {
+        "bleu": "bleu",
+        "rouge": "rouge1",
+        "meteor": "meteor",
+    }
+
+    # Iterate over the different metrics
+    for metric_name, metric_value in metrics.items():
+        metric = evaluate.load(metric_name)
+        bert_score = evaluate.load("bertscore")
+
+        # Get an evaluation for the original phrase and each of the ouputs
+        references = response_df["original"].values
+        methods = ["greedy", "beam", "sampling", "top_k", "top_p", "topp_topk"]
+        results_dict = {}
+        for index, reference in tqdm(enumerate(references)):
+            scores = {}
+            references = [[reference]]
+
+            # Iterate over the methods and get the metrics
+            for method in methods:
+                prediction_string = response_df.iloc[index, :][method]
+                predictions = [prediction_string]
+                metric_results = metric.compute(
+                    predictions=predictions, references=references
+                )[metric_value]
+                bert_score_results = bert_score.compute(
+                    predictions=predictions,
+                    references=references,
+                    model_type="bert-base-uncased",
+                )["f1"][0]
+
+                scores[method + "_" + metric_name] = metric_results
+                scores[method + "_bert_score_f1"] = bert_score_results
+
+            # Get the results stored
+            results_dict[reference] = scores
+
+    results_and_metrics_df = pd.DataFrame(results_dict).T
+
+    with pd.ExcelWriter("./results/responses_and_metrics.xlsx") as writer:
+        response_df.to_excel(writer, sheet_name="Reponses")
+        results_and_metrics_df.to_excel(writer, sheet_name="Metrics")
 
 
 if __name__ == "__main__":
