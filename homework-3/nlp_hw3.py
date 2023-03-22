@@ -341,17 +341,20 @@ def run_tasks():
     }
 
     # Iterate over the different metrics
-    for metric_name, metric_value in metrics.items():
-        metric = evaluate.load(metric_name)
-        bert_score = evaluate.load("bertscore")
+    results_dict = {}
 
-        # Get an evaluation for the original phrase and each of the ouputs
-        references = response_df["original"].values
-        methods = ["greedy", "beam", "sampling", "top_k", "top_p", "topp_topk"]
-        results_dict = {}
-        for index, reference in tqdm(enumerate(references)):
-            scores = {}
-            references = [[reference]]
+    # Get all of the reference texts
+    references = response_df["original"].values
+    for index, reference in tqdm(enumerate(references)):
+        references = [[reference]]
+
+        scores = {}
+        for metric_name, metric_value in metrics.items():
+            metric = evaluate.load(metric_name)
+            bert_score = evaluate.load("bertscore")
+
+            # Calcualte the metric for each method
+            methods = ["greedy", "beam", "sampling", "top_k", "top_p", "topp_topk"]
 
             # Iterate over the methods and get the metrics
             for method in methods:
@@ -369,8 +372,8 @@ def run_tasks():
                 scores[method + "_" + metric_name] = metric_results
                 scores[method + "_bert_score_f1"] = bert_score_results
 
-            # Get the results stored
-            results_dict[reference] = scores
+        # Get the results stored
+        results_dict[reference] = scores
 
     results_and_metrics_df = pd.DataFrame(results_dict).T
 
