@@ -3,6 +3,7 @@ import evaluate
 import numpy as np
 import pandas as pd
 import torch
+import copy
 from datasets import load_dataset, load_metric
 from tqdm import tqdm
 from transformers import (
@@ -12,6 +13,23 @@ from transformers import (
     T5Tokenizer,
 )
 
+def greedy_search_generate(model, input_ids, max_length):
+    is_enc_dec = hasattr(model, 'encoder') and hasattr(model, 'decoder')
+    if is_enc_dec:
+        gen_text = torch.tensor([[0]], dtype=torch.int32)
+        for i in range(max_length):
+            logits = model.forward(input_ids,decoder_input_ids=gen_text).logits[0,-1,:]
+            gen_text = torch.cat((gen_text,torch.argmax(logits).unsqueeze(0).unsqueeze(0)),dim=1)
+            if gen_text[0][-1] == model.generation_config.eos_token_id:
+                break
+    else:
+        gen_text = copy.deepcopy(input_ids)
+        for i in range(max_length - len(input_ids[0])):
+            logits = model.forward(gen_text).logits[0,-1,:]
+            gen_text = torch.cat((gen_text,torch.argmax(logits).unsqueeze(0).unsqueeze(0)),dim=1)
+            if gen_text[0][-1] == model.generation_config.eos_token_id:
+                break
+    return gen_text
 
 def calc_perplexity(model, sentence):
     """
@@ -106,11 +124,15 @@ def get_outputs(
     num_return_sequences=5,
     top_k=10,
     top_p=0.98,
+    scratch = True
 ):
     out_json = None
     if strategy == "greedy":
         # greedy search
-        greedy_output = model.generate(input_ids, max_length=50)
+        if scratch:
+            greedy_output = greedy_search_generate(model, input_ids, max_length)
+        else:
+            greedy_output = model.generate(input_ids, max_length=50)
         out_json, full_results_list = calc_stats(
             "Greedy Output", model, tokenizer, greedy_output, perplexity=perplexity
         )
