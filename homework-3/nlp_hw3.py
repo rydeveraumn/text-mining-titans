@@ -15,6 +15,7 @@ from transformers import (
 
 def greedy_search_generate(model, input_ids, max_length):
     is_enc_dec = hasattr(model, 'encoder') and hasattr(model, 'decoder')
+    #For T5 model
     if is_enc_dec:
         gen_text = torch.tensor([[0]], dtype=torch.int32)
         for i in range(max_length):
@@ -22,6 +23,7 @@ def greedy_search_generate(model, input_ids, max_length):
             gen_text = torch.cat((gen_text,torch.argmax(logits).unsqueeze(0).unsqueeze(0)),dim=1)
             if gen_text[0][-1] == model.generation_config.eos_token_id:
                 break
+    #For GPT-2 model
     else:
         gen_text = copy.deepcopy(input_ids)
         for i in range(max_length - len(input_ids[0])):
