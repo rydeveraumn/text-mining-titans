@@ -178,31 +178,24 @@ def get_predictions(results):
     return predictions
 
 
-def create_labels_for_scoring(df):
+def create_labels_for_scoring(locations):
     """
-    Function to create labels for scoring;
-    example: ['0 1', '3 4'] -> ['0 1; 3 4']
+    Function that will create labels for our scoring metric;
+    example ['70 91', '176 183'] -> [[70, 91], [176, 183]]
     """
-    df["location_for_create_labels"] = [ast.literal_eval(f"[]")] * len(df)
-    for i in range(len(df)):
-        lst = df.loc[i, "location"]
-        if lst:
-            new_lst = ";".join(lst)
-            df.loc[i, "location_for_create_labels"] = ast.literal_eval(
-                f'[["{new_lst}"]]'
-            )
-    # create labels
-    truths = []
-    for location_list in df["location_for_create_labels"].values:
-        truth = []
-        if len(location_list) > 0:
-            location = location_list[0]
-            for loc in [s.split() for s in location.split(";")]:
-                start, end = int(loc[0]), int(loc[1])
-                truth.append([start, end])
-        truths.append(truth)
+    location_list = []
+    if len(locations) != 0:
+        # Iterate over the locations and get starting
+        # and ending positions
+        for location in locations:
+            start, end = location.split()
+            start, end = int(start), int(end)
 
-    return truths
+            # Put it in list form
+            location = [start, end]
+            location_list.append(location)
+
+    return location_list
 
 
 #### Project Metric ####
@@ -268,3 +261,11 @@ def span_micro_f1(preds, truths):
         bin_truths.append(spans_to_binary(truth, length))
 
     return micro_f1(bin_preds, bin_truths)
+
+
+def get_score(y_true, y_pred):
+    """
+    Function to get the score
+    """
+    score = span_micro_f1(y_true, y_pred)
+    return score
