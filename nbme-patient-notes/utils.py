@@ -20,6 +20,7 @@ class Configuration:
     tokenizer = AutoTokenizer.from_pretrained(model)
     max_length = 354  # Maximum sequence length - comes from Kaggle notebook
     apex = True  # Turn on mixed precision training
+    fc_dropout = 0.20
 
 
 def training_function(
@@ -35,9 +36,16 @@ def training_function(
     losses = 0.0
 
     # Iterate over data and train model
-    for index, (inputs, label) in enumerate(train_loader):
+    for index, (inputs, labels) in tqdm.tqdm(enumerate(train_loader)):
         # zero out the gradients
         optimizer.zero_grad()
+
+        # Put inputs and labels on device
+        for k, v in inputs.items():
+            inputs[k] = v.to(device=device)
+
+        # labels on device
+        labels = labels.to(device=device)
 
         # Get predictions
         with torch.cuda.amp.autocast(enabled=config.apex):
@@ -57,6 +65,38 @@ def training_function(
         losses += loss.item()
 
     return losses / len(train_loader)
+
+
+def validation_function(config, valid_loader, model, device):
+    """
+    Function that will run validation after a single epoch
+    """
+    model.eval()
+    all_predictions = []
+    all_labels = []
+
+    with torch.no_grad():
+        for index, (inputs, labels) in enumerate(valid_loader):
+            # Put inputs on device
+            for k, v in inputs.items():
+                inputs[k] = v.to(device=device)
+
+            # labels on device
+            labels = labels.to(device=device)
+
+            # Get predictions
+            predictions = model(inputs)
+            predictions = torch.sigmoid(predictions.flatten())
+
+            all_predictions.append(
+                predictions.detach().numpy(), labels.flatten().detach().numpy()
+            )
+
+    # Concatenate the predictions and labels
+    all_predictions = np.concatenate(all_predictions)
+    all_labels = np.concatenate(all_labels)
+
+    return all_predictions, all_labels
 
 
 #### Build Project Outputs ####

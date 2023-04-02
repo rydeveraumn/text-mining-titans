@@ -16,6 +16,7 @@ def load_training_data(config):
     in total there are 14300 annotations for 1000 patient notes
     """
     train_df = pd.read_csv("/kaggle/input/nbme-score-clinical-patient-notes/train.csv")
+    train_df['location'] = train_df['location'].apply(lambda x: x.replace(";", "', '"))
 
     # Turn the string-list annotations into a list
     train_df["annotation"] = train_df["annotation"].apply(ast.literal_eval)
