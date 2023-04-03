@@ -15,7 +15,7 @@ def load_training_data(config):
     The training dataframe is where all of the labels are located
     in total there are 14300 annotations for 1000 patient notes
     """
-    train_df = pd.read_csv("/kaggle/input/nbme-score-clinical-patient-notes/train.csv")
+    train_df = pd.read_csv("./nbme_data/train.csv")
     train_df['location'] = train_df['location'].apply(lambda x: x.replace(";", "', '"))
 
     # Turn the string-list annotations into a list
@@ -27,12 +27,12 @@ def load_training_data(config):
     # Load in the patient notes which is the main text
     # that we will be modeling
     patient_notes_df = pd.read_csv(
-        "/kaggle/input/nbme-score-clinical-patient-notes/patient_notes.csv"
+        "./nbme_data/patient_notes.csv"
     )
 
     # Load in the features text
     features_df = pd.read_csv(
-        "/kaggle/input/nbme-score-clinical-patient-notes/features.csv"
+        "./nbme_data/features.csv"
     )
 
     # Merge the features

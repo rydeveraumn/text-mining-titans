@@ -3,6 +3,7 @@ import itertools
 
 # third party
 import torch
+import tqdm
 from transformers import AutoTokenizer
 
 
@@ -88,9 +89,8 @@ def validation_function(config, valid_loader, model, device):
             predictions = model(inputs)
             predictions = torch.sigmoid(predictions.flatten())
 
-            all_predictions.append(
-                predictions.detach().numpy(), labels.flatten().detach().numpy()
-            )
+            all_predictions.append(predictions.detach().cpu().numpy())
+            all_labels.append(labels.flatten().detach().cpu().numpy())
 
     # Concatenate the predictions and labels
     all_predictions = np.concatenate(all_predictions)
@@ -111,7 +111,7 @@ def get_character_probabilities(patient_notes, predictions, config):
     results = [np.zeros(len(patient_note)) for patient_note in patient_notes]
 
     # Get the predictions for the character level
-    for index, (patient_note, prediction) in enumerate(zip(patient_notes, predictions)):
+    for index, (patient_note, prediction) in tqdm.tqdm(enumerate(zip(patient_notes, predictions))):
         # Get the encoding
         encoding = config.tokenizer(
             patient_note,
@@ -190,11 +190,11 @@ def create_labels_for_scoring(locations):
         for location in locations:
             start, end = location.split()
             start, end = int(start), int(end)
-
+            
             # Put it in list form
             location = [start, end]
             location_list.append(location)
-
+    
     return location_list
 
 
