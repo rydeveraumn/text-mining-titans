@@ -2,8 +2,10 @@
 import itertools
 
 # third party
+import numpy as np
 import torch
 import tqdm
+from sklearn.metrics import f1_score
 from transformers import AutoTokenizer
 
 
@@ -17,9 +19,9 @@ class Configuration:
     n_splits = 5
 
     # Model information
-    model = "microsoft/deberta-v3-large"
+    model = "microsoft/deberta-v3-base"
     tokenizer = AutoTokenizer.from_pretrained(model)
-    max_length = 354  # Maximum sequence length - comes from Kaggle notebook
+    max_length = 466  # Maximum sequence length - comes from Kaggle notebook
     apex = True  # Turn on mixed precision training
     fc_dropout = 0.20
 
@@ -56,11 +58,14 @@ def training_function(
         loss = criterion(predictions.view(-1, 1), labels.view(-1, 1))
 
         # Mask the loss to not include outside tokens
-        loss_mask = labels.view(-1, 1) != 1
+        loss_mask = labels.view(-1, 1) != -1
         loss = torch.masked_select(loss, loss_mask).mean()
 
-        # Gradient scaler
+        # Gradient scaler & weights updates
         scaler.scale(loss).backward()
+        grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), 1000)
+        scaler.step(optimizer)
+        scaler.update()
 
         # Get the average loss
         losses += loss.item()
@@ -77,7 +82,7 @@ def validation_function(config, valid_loader, model, device):
     all_labels = []
 
     with torch.no_grad():
-        for index, (inputs, labels) in enumerate(valid_loader):
+        for index, (inputs, labels) in tqdm.tqdm(enumerate(valid_loader)):
             # Put inputs on device
             for k, v in inputs.items():
                 inputs[k] = v.to(device=device)
@@ -111,7 +116,7 @@ def get_character_probabilities(patient_notes, predictions, config):
     results = [np.zeros(len(patient_note)) for patient_note in patient_notes]
 
     # Get the predictions for the character level
-    for index, (patient_note, prediction) in tqdm.tqdm(enumerate(zip(patient_notes, predictions))):
+    for index, (patient_note, prediction) in enumerate(zip(patient_notes, predictions)):
         # Get the encoding
         encoding = config.tokenizer(
             patient_note,

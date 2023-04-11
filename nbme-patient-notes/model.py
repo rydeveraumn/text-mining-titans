@@ -21,6 +21,22 @@ class NBMEModel(nn.Module):
 
         # Linear layers
         self.linear = nn.Linear(self.model_config.hidden_size, 1)
+        self._init_weights(self.linear)
+
+    def _init_weights(self, module):
+        if isinstance(module, nn.Linear):
+            module.weight.data.normal_(mean=0.0, std=self.model_config.initializer_range)
+            if module.bias is not None:
+                module.bias.data.zero_()
+
+        elif isinstance(module, nn.Embedding):
+            module.weight.data.normal_(mean=0.0, std=self.model_config.initializer_range)
+            if module.padding_idx is not None:
+                module.weight.data[module.padding_idx].zero_()
+
+        elif isinstance(module, nn.LayerNorm):
+            module.bias.data.zero_()
+            module.weight.data.fill_(1.0)
 
     def forward(self, inputs):  # noqa
         transformer_features = self.model(**inputs)

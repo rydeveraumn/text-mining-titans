@@ -130,7 +130,7 @@ def build_nbme_labels(config, patient_notes_text, annotation_length, location_li
     if annotation_length != 0:
         for i in location_list:
             start_index, end_index = i.split()
-            start_index, end_index = (int(start_index), int(end_index))
+            start_index, end_index = (int(start_index) - 1, int(end_index))
 
             # Get the labels
             for index, (start, end) in enumerate(offset_mapping):
