@@ -25,11 +25,15 @@ def run_model_pipeline():
     Function that runs the NBME pipeline
     """
     # Load in the data
+    print("Loading configuration and data")
     config = Configuration()
     data = load_training_data(config=config)
-    device = torch.device("cuda:") if torch.cuda.is_available() else torch.device("cpu")
+    device = (
+        torch.device("cuda:1") if torch.cuda.is_available() else torch.device("cpu")
+    )
 
     # Create train, validation & test
+    print("Setting up data for training")
     train_df = data.loc[data["fold_number"] != 4].reset_index(drop=True)
     test_df = data.loc[data["fold_number"] == 4].reset_index(drop=True)
     test_patient_notes_texts = test_df["pn_history"].values
@@ -65,6 +69,7 @@ def run_model_pipeline():
     optimizer = optim.AdamW(model.parameters(), lr=1e-5)
 
     # Now set up the model to run
+    print("Run and evaluate model")
     for epoch in range(1):
         training_function(
             config=config,
