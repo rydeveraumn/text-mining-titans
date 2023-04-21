@@ -165,9 +165,7 @@ def build_pseudo_predictions(config, model, pseudo_data, pseudo_loader, device):
     for patient_note, preds in zip(pseudo_patient_notes_texts, pseudo_preds):
         annotations = []
         if len(preds) == 0:
-            annotation = ""
             annotation_length = 0
-            annotations.append(annotation)
 
         else:
             for location in preds:

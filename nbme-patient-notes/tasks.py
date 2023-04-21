@@ -6,7 +6,7 @@ import tqdm
 from torch.utils.data import DataLoader
 
 # first party
-from data import NBMEDataset, load_training_data
+from data import NBMEDataset, build_pseudo_data, load_training_data
 from model import NBMEModel
 from utils import (
     Configuration,
@@ -26,41 +26,43 @@ def run_model_pipeline():
     """
     # Load in the data
     print("Loading configuration and data")
+    # Load in the data
     config = Configuration()
     data = load_training_data(config=config)
+    pseudo_data = build_pseudo_data().sample(frac=0.01).reset_index(drop=True)
     device = (
         torch.device("cuda:1") if torch.cuda.is_available() else torch.device("cpu")
     )
 
-    # Create train, validation & test
-    print("Setting up data for training")
-    train_df = data.loc[data["fold_number"].isin([0, 1, 2, 3])].reset_index(drop=True)
-
-    # # Get the test data
-    # test_df = data.loc[data["fold_number"] == 4].reset_index(drop=True)
-    # test_patient_notes_texts = test_df["pn_history"].values
-    # test_labels = test_df["location"].apply(create_labels_for_scoring)
-
-    # Now get the validation_data
+    # Get training and validation data
+    print("Load and build data loaders for training and evaluation")
+    train_df = data.loc[data["fold_number"] != 4].reset_index(drop=True)
     valid_df = data.loc[data["fold_number"] == 4].reset_index(drop=True)
     valid_patient_notes_texts = valid_df["pn_history"].values
     valid_labels = valid_df["location"].apply(create_labels_for_scoring)
 
+    # Pseduo data
+    pseudo_patient_notes_texts = pseudo_data["pn_history"].values
+
     # Create the datasets and data loaders
     training_dataset = NBMEDataset(train_df, config)
     valid_dataset = NBMEDataset(valid_df, config)
-    # test_dataset = NBMEDataset(test_df, config)
+    pseudo_train_dataset = NBMEDataset(pseudo_data, config, build_label=False)
 
-    # Training, valid and test loaders
+    # Training loaders
     train_loader = DataLoader(
         training_dataset, batch_size=8, shuffle=True, pin_memory=True, drop_last=True
     )
     valid_loader = DataLoader(
         valid_dataset, batch_size=8, shuffle=False, pin_memory=True, drop_last=False
     )
-    # test_loader = DataLoader(
-    #     test_dataset, batch_size=8, shuffle=False, pin_memory=True, drop_last=False
-    # )
+    pseudo_loader = DataLoader(
+        pseudo_train_dataset,
+        batch_size=8,
+        shuffle=False,
+        pin_memory=True,
+        drop_last=False,
+    )
 
     # Get the loss and optimizers and model
     model = NBMEModel(config=config)
@@ -69,8 +71,8 @@ def run_model_pipeline():
     criterion = nn.BCEWithLogitsLoss(reduction="none")
     optimizer = optim.AdamW(model.parameters(), lr=1e-5)
 
-    # Now set up the model to run
-    print("Run and evaluate model")
+    # TODO: still need to make training function and validation
+    print("Train model")
     for epoch in range(1):
         training_function(
             config=config,
@@ -82,46 +84,35 @@ def run_model_pipeline():
             device=device,
         )
 
-        # Get the probability outputs - for validation
-        valid_predictions, valid_labels = validation_function(
-            config, valid_loader, model, device
-        )
+        # Get the probability outputs
+        predictions, labels = validation_function(config, valid_loader, model, device)
 
         # Reshape the predictions and labels
         samples = len(valid_df)
-        valid_predictions = valid_predictions.reshape((samples, config.max_length))
-        valid_labels = valid_labels.reshape((samples, config.max_length))
+        predictions = predictions.reshape((samples, config.max_length))
+        labels = labels.reshape((samples, config.max_length))
 
         # Get character probabilities
-        valid_character_probabilities = get_character_probabilities(
-            valid_patient_notes_texts, valid_predictions, config
+        character_probabilities = get_character_probabilities(
+            valid_patient_notes_texts, predictions, config
         )
 
         # Get results
-        valid_results = get_thresholded_sequences(valid_character_probabilities)
-        valid_preds = get_predictions(valid_results)
-        valid_score = get_score(valid_labels, valid_preds)
-        print("Scores on validation data:")
-        print(valid_score)
+        results = get_thresholded_sequences(character_probabilities)
+        preds = get_predictions(results)
+        score = get_score(valid_labels, preds)
+        print(score)
 
-        # # Get the probability outputs - for test
-        # test_predictions, test_labels = validation_function(
-        #     config, test_loader, model, device
-        # )
+        # Save the model after each epoch
+        PATH = f"./models/deberta_v3_base_cpt_epoch_{epoch}.pt"
+        torch.save(model.state_dict(), PATH)
 
-        # # Reshape the predictions and labels
-        # samples = len(test_df)
-        # test_predictions = test_predictions.reshape((samples, config.max_length))
-        # test_labels = test_labels.reshape((samples, config.max_length))
-
-        # # Get character probabilities
-        # test_character_probabilities = get_character_probabilities(
-        #     test_patient_notes_texts, test_predictions, config
-        # )
-
-        # # Get results
-        # test_results = get_thresholded_sequences(test_character_probabilities)
-        # test_preds = get_predictions(test_results)
-        # test_score = get_score(test_labels, test_preds)
-        # print("Scores on test data:")
-        # print(test_score)
+    print("Build Pseudo Labels and save output")
+    pseudo_data = build_pseudo_predictions(
+        config, model, pseudo_data, pseudo_loader, device
+    )
+    pseudo_data["fold_number"] = 0
+    pseudo_data["id"] = (
+        pseudo_data["pn_num"].astype(str) + "_" + pseudo_data["feature_num"].astype(str)
+    )
+    pseudo_data.to_csv("./nbme_data/pseudo_train.csv", index=False)
