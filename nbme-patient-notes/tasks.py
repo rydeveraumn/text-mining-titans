@@ -30,7 +30,7 @@ def run_model_pipeline():
     # Load in the data
     config = Configuration()
     data = load_training_data(config=config)
-    pseudo_data = build_pseudo_data().sample(frac=0.01).reset_index(drop=True)
+    pseudo_data = build_pseudo_data()
     device = (
         torch.device("cuda:1") if torch.cuda.is_available() else torch.device("cpu")
     )
@@ -74,7 +74,7 @@ def run_model_pipeline():
 
     # TODO: still need to make training function and validation
     print("Train model")
-    for epoch in range(1):
+    for epoch in range(7):
         training_function(
             config=config,
             train_loader=train_loader,
