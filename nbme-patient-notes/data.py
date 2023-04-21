@@ -16,7 +16,7 @@ def load_training_data(config):
     in total there are 14300 annotations for 1000 patient notes
     """
     train_df = pd.read_csv("./nbme_data/train.csv")
-    train_df['location'] = train_df['location'].apply(lambda x: x.replace(";", "', '"))
+    train_df["location"] = train_df["location"].apply(lambda x: x.replace(";", "', '"))
 
     # Turn the string-list annotations into a list
     train_df["annotation"] = train_df["annotation"].apply(ast.literal_eval)
@@ -26,14 +26,10 @@ def load_training_data(config):
 
     # Load in the patient notes which is the main text
     # that we will be modeling
-    patient_notes_df = pd.read_csv(
-        "./nbme_data/patient_notes.csv"
-    )
+    patient_notes_df = pd.read_csv("./nbme_data/patient_notes.csv")
 
     # Load in the features text
-    features_df = pd.read_csv(
-        "./nbme_data/features.csv"
-    )
+    features_df = pd.read_csv("./nbme_data/features.csv")
 
     # Merge the features
     train_df = pd.merge(
@@ -69,6 +65,41 @@ def load_training_data(config):
     train_df["fold_number"] = fold_numbers.astype(np.int8)
 
     return train_df
+
+
+def build_pseudo_data():
+    """
+    Function to build the pseudo-data for inputs and building
+    the soft targets
+    """
+    patient_notes_df = pd.read_csv("./nbme_data/patient_notes.csv")
+    features_df = pd.read_csv("./nbme_data/features.csv")
+    train_df = pd.read_csv("./nbme_data/train.csv")
+
+    # Filter the patient notes to patients that are not in
+    # the training data
+    train_patients = train_df["pn_num"].unique()
+
+    patient_mask = ~patient_notes_df["pn_num"].isin(train_patients)
+    patient_notes_df = patient_notes_df.loc[patient_mask].reset_index(drop=True)
+
+    # Subsample the patients further
+    psuedo_label_pn_num = patient_notes_df["pn_num"].unique()
+    psuedo_label_pn_num = np.random.choice(psuedo_label_pn_num, 10000, replace=False)
+
+    # reduce patient mask
+    reduced_patient_mask = patient_notes_df["pn_num"].isin(psuedo_label_pn_num)
+    patient_notes_df = patient_notes_df.loc[reduced_patient_mask].reset_index(drop=True)
+
+    # Psuedo-training data
+    pseudo_train_df = pd.merge(
+        patient_notes_df, features_df, on=["case_num"], how="inner"
+    )
+    # Set up fake information here for now
+    pseudo_train_df["annotation_length"] = 0
+    pseudo_train_df["location"] = 0
+
+    return pseudo_train_df
 
 
 def build_nbme_input(config, patient_notes_text, feature_text):
@@ -141,10 +172,11 @@ def build_nbme_labels(config, patient_notes_text, annotation_length, location_li
 
 
 class NBMEDataset(Dataset):  # noqa
-    def __init__(self, data, config):  # noqa
+    def __init__(self, data, config, build_label=True):  # noqa
         # Setup data and configuration
         self.data = data
         self.config = config
+        self.build_label = build_label
 
         # Main inputs for the features for the model
         self.patient_notes_text = data["pn_history"].values
@@ -166,8 +198,11 @@ class NBMEDataset(Dataset):  # noqa
         inputs = build_nbme_input(self.config, patient_notes_text, feature_text)
 
         # Build the labels
-        labels = build_nbme_labels(
-            self.config, patient_notes_text, annotation_length, location
-        )
+        if self.build_label:
+            labels = build_nbme_labels(
+                self.config, patient_notes_text, annotation_length, location
+            )
 
-        return inputs, labels
+            return inputs, labels
+
+        return inputs

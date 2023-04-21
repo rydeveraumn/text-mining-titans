@@ -105,6 +105,91 @@ def validation_function(config, valid_loader, model, device):
 
 
 #### Build Project Outputs ####
+def pseudo_label(output):
+    return str(
+        list(
+            map(
+                lambda x: str(x).replace("[", "").replace("]", "").replace(",", ""),
+                output,
+            )
+        )
+    )
+
+
+def build_pseudo_predictions(config, model, pseudo_data, pseudo_loader, device):
+    """
+    Function to build out the pseudo labels for more training
+    data
+    """
+    # Patient notes
+    pseudo_patient_notes_texts = pseudo_data["pn_history"].values
+
+    # Small config
+    model.eval()
+    all_predictions = []
+
+    with torch.no_grad():
+        for index, inputs in tqdm.tqdm(enumerate(pseudo_loader)):
+            # Put inputs on device
+            for k, v in inputs.items():
+                inputs[k] = v.to(device=device)
+
+            # Get predictions
+            predictions = model(inputs)
+            predictions = torch.sigmoid(predictions.flatten())
+
+            all_predictions.append(predictions.detach().cpu().numpy())
+
+    # Concatenate the predictions and labels
+    all_predictions = np.concatenate(all_predictions)
+
+    samples = len(pseudo_data)
+    all_predictions = all_predictions.reshape((samples, config.max_length))
+
+    # Get character probabilities
+    pseudo_character_probabilities = get_character_probabilities(
+        pseudo_patient_notes_texts, all_predictions, config
+    )
+
+    # Get results
+    pseudo_results = get_thresholded_sequences(pseudo_character_probabilities)
+    pseudo_preds = get_predictions(pseudo_results)
+
+    # Get the annotations and create the labels
+    # With the pseudo predictions we can loop over the text and
+    # get the annotations
+    full_data_annotations = []
+    full_data_locations = []
+    full_data_annotation_length = []
+
+    for patient_note, preds in zip(pseudo_patient_notes_texts, pseudo_preds):
+        annotations = []
+        if len(preds) == 0:
+            annotation = ""
+            annotation_length = 0
+            annotations.append(annotation)
+
+        else:
+            for location in preds:
+                start, end = location
+                annotation = patient_note[start:end]
+                annotations.append(annotation)
+
+        annotations = str(annotations)
+        annotation_length = len(preds)
+        full_data_annotations.append(annotations)
+        full_data_annotation_length.append(annotation_length)
+
+        # Create labels
+        location = pseudo_label(preds)
+        full_data_locations.append(location)
+
+    # Add annotations to data
+    pseudo_data["annotation"] = full_data_annotations
+    pseudo_data["location"] = full_data_locations
+    pseudo_data["annotation_length"] = full_data_annotation_length
+
+    return pseudo_data
 
 
 def get_character_probabilities(patient_notes, predictions, config):
@@ -195,11 +280,11 @@ def create_labels_for_scoring(locations):
         for location in locations:
             start, end = location.split()
             start, end = int(start), int(end)
-            
+
             # Put it in list form
             location = [start, end]
             location_list.append(location)
-    
+
     return location_list
 
 

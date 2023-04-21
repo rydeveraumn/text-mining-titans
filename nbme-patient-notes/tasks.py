@@ -34,21 +34,22 @@ def run_model_pipeline():
 
     # Create train, validation & test
     print("Setting up data for training")
-    train_df = data.loc[data["fold_number"] != 4].reset_index(drop=True)
-    test_df = data.loc[data["fold_number"] == 4].reset_index(drop=True)
-    test_patient_notes_texts = test_df["pn_history"].values
-    test_labels = test_df["location"].apply(create_labels_for_scoring)
+    train_df = data.loc[data["fold_number"].isin([0, 1, 2, 3])].reset_index(drop=True)
 
-    # Now get the training and test data
-    train_df = train_df.loc[train_df["fold_number"] != 3].reset_index(drop=True)
-    valid_df = train_df.loc[train_df["fold_number"] == 3].reset_index(drop=True)
+    # # Get the test data
+    # test_df = data.loc[data["fold_number"] == 4].reset_index(drop=True)
+    # test_patient_notes_texts = test_df["pn_history"].values
+    # test_labels = test_df["location"].apply(create_labels_for_scoring)
+
+    # Now get the validation_data
+    valid_df = data.loc[data["fold_number"] == 4].reset_index(drop=True)
     valid_patient_notes_texts = valid_df["pn_history"].values
     valid_labels = valid_df["location"].apply(create_labels_for_scoring)
 
     # Create the datasets and data loaders
     training_dataset = NBMEDataset(train_df, config)
     valid_dataset = NBMEDataset(valid_df, config)
-    test_dataset = NBMEDataset(test_df, config)
+    # test_dataset = NBMEDataset(test_df, config)
 
     # Training, valid and test loaders
     train_loader = DataLoader(
@@ -57,9 +58,9 @@ def run_model_pipeline():
     valid_loader = DataLoader(
         valid_dataset, batch_size=8, shuffle=False, pin_memory=True, drop_last=False
     )
-    test_loader = DataLoader(
-        test_dataset, batch_size=8, shuffle=False, pin_memory=True, drop_last=False
-    )
+    # test_loader = DataLoader(
+    #     test_dataset, batch_size=8, shuffle=False, pin_memory=True, drop_last=False
+    # )
 
     # Get the loss and optimizers and model
     model = NBMEModel(config=config)
@@ -103,24 +104,24 @@ def run_model_pipeline():
         print("Scores on validation data:")
         print(valid_score)
 
-        # Get the probability outputs - for test
-        test_predictions, test_labels = validation_function(
-            config, test_loader, model, device
-        )
+        # # Get the probability outputs - for test
+        # test_predictions, test_labels = validation_function(
+        #     config, test_loader, model, device
+        # )
 
-        # Reshape the predictions and labels
-        samples = len(test_df)
-        test_predictions = test_predictions.reshape((samples, config.max_length))
-        test_labels = test_labels.reshape((samples, config.max_length))
+        # # Reshape the predictions and labels
+        # samples = len(test_df)
+        # test_predictions = test_predictions.reshape((samples, config.max_length))
+        # test_labels = test_labels.reshape((samples, config.max_length))
 
-        # Get character probabilities
-        test_character_probabilities = get_character_probabilities(
-            test_patient_notes_texts, test_predictions, config
-        )
+        # # Get character probabilities
+        # test_character_probabilities = get_character_probabilities(
+        #     test_patient_notes_texts, test_predictions, config
+        # )
 
-        # Get results
-        test_results = get_thresholded_sequences(test_character_probabilities)
-        test_preds = get_predictions(test_results)
-        test_score = get_score(test_labels, test_preds)
-        print("Scores on test data:")
-        print(test_score)
+        # # Get results
+        # test_results = get_thresholded_sequences(test_character_probabilities)
+        # test_preds = get_predictions(test_results)
+        # test_score = get_score(test_labels, test_preds)
+        # print("Scores on test data:")
+        # print(test_score)
